@@ -1,3 +1,5 @@
+// 3.6GB RAM
+
 /* eslint-disable no-unused-vars */
 import type { NS } from '@ns';
 import {
@@ -122,7 +124,6 @@ export function autocomplete(data: { flags: (schema: ArgsSchemaEntry[]) => void 
 
 /**
  * Requires access to the TIX API. Purchases access to the 4S Mkt Data API as soon as it can
- * (3.6GB RAM)
  */
 export async function main(ns: NS): Promise<void> {
   const runOptions = getConfiguration(ns, argsSchema);

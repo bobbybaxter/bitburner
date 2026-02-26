@@ -1,7 +1,12 @@
+// 4.2GB RAM
+
 import { NS, Server } from '@ns';
 import { getServerNames } from './get-server-names.js';
 import { openPorts } from './open-ports.js';
 
+/**
+ * Opens all ports on all servers
+ */
 export async function main(ns: NS): Promise<void> {
   const serverNames = getServerNames(ns).map((server) => server.hostname);
 

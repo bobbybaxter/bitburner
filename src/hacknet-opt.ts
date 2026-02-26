@@ -1,3 +1,5 @@
+// 7.45GB RAM
+
 import { Hacknet, NS } from '@ns';
 import { localISOString } from './helpers/local-iso-string.js';
 
@@ -156,7 +158,7 @@ function performUpgrade(hacknet: Hacknet, nodeIndex: number, type: UpgradeType, 
 }
 
 /**
- * Optimizes HackNet node upgrades and purchases. (7.45GB RAM)
+ * Optimizes HackNet node upgrades and purchases.
  */
 export async function main(ns: NS): Promise<void> {
   const numLevels = (ns.args[0] as number | undefined) ?? DEFAULT_NUM_LEVELS;

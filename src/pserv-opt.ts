@@ -1,3 +1,5 @@
+// 8.5GB RAM
+
 import { NS } from '@ns';
 
 const formatter = new Intl.NumberFormat('en-US', {
@@ -12,7 +14,7 @@ const CONFIG = {
 };
 
 /**
- * Optimizes purchased servers. (8.5GB RAM)
+ * Optimizes purchased servers.
  */
 export async function main(ns: NS): Promise<void> {
   let multi = CONFIG.initialMulti;
