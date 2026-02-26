@@ -11,8 +11,10 @@ type UpgradeResult = {
   levelAmount?: number; // for level upgrades, how many levels to buy
 };
 
+// Default values
 const DEFAULT_NUM_LEVELS = 1;
-const PURCHASE_COOLDOWN_MS = 2000;
+const DEFAULT_BUDGET_PCT = 50;
+const PURCHASE_COOLDOWN_MS = 200;
 const IDLE_SLEEP_MS = 30000;
 const NOTHING_TO_DO_SLEEP_MS = 60000;
 
@@ -158,7 +160,8 @@ function performUpgrade(hacknet: Hacknet, nodeIndex: number, type: UpgradeType, 
  */
 export async function main(ns: NS): Promise<void> {
   const numLevels = (ns.args[0] as number | undefined) ?? DEFAULT_NUM_LEVELS;
-  ns.tprint(`hacknet-opt v2 loaded with numLevels=${numLevels}`); // Remove after confirming sync works
+  const budgetPct = (ns.args[1] as number | undefined) ?? DEFAULT_BUDGET_PCT;
+  ns.tprint(`hacknet-opt v2 loaded with numLevels=${numLevels}, budgetPct=${budgetPct}%`); // Remove after confirming sync works
 
   let hacknetMoneyEarned: number;
   let hacknetMoneySpent: number;
@@ -191,8 +194,8 @@ export async function main(ns: NS): Promise<void> {
     let wasItemPurchased = false;
     // hacknet_expenses is stored as negative (outflow); treat as positive amount spent
     const spent = Math.abs(hacknetMoneySpent);
-    // Both modes: overall spending must not exceed earned. Budget left = earned - spent.
-    spendingMax = Math.max(0, hacknetMoneyEarned - spent);
+    // Both modes: overall spending must not exceed earned. Budget left = earned - spent, scaled by budgetPct.
+    spendingMax = Math.max(0, hacknetMoneyEarned - spent) * (budgetPct / 100);
     const purchaseNodeCost = hacknet.getPurchaseNodeCost();
     const numNodes = hacknet.numNodes();
 

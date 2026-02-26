@@ -48,24 +48,54 @@ run hack2.js
 
 ---
 
-## hacknet-opt.ts
+## hack3.ts
 
-**What it does:** Optimizes HackNet node upgrades and purchases. Spends only within income earned from HackNet; when Formulas API is available, picks upgrades by best ROI (return on investment), otherwise picks cheapest. Buys new nodes when ROI compares favorably.
+**What it does:** Batched hacking across multiple hosts and targets. Uses all rooted servers as hosts (including home at 90% RAM) and targets non-home, non-purchased servers with money. Runs `open-all-ports.js` on startup, deploys action scripts (`do-hack.js`, `do-grow.js`, `do-weaken1.js`, `do-weaken2.js`) to each host. Schedules timed batches: weaken when security is high, grow when money is low, then hack+grow+weaken1+weaken2 cycles on the top ~20% of `findBestServer` targets. Uses Formulas API when available for thread calculations.
 
 **How to run:**
 
 ```bash
-run hacknet-opt.js              # default: 1 level per upgrade
+run hack3.js
+```
+
+- No parameters. Runs indefinitely. Requires action scripts in `/scripts/` and `open-all-ports.js`. Benefits from Formulas.exe for optimal thread counts.
+
+---
+
+## contract-auto-solver.ts
+
+**What it does:** Walks the network with a depth-first search and automatically solves any coding contracts (`.cct` files) found on each server. Uses the `solveContract` helper for each contract type. High RAM (27GB) due to contract solvers.
+
+**How to run:**
+
+```bash
+run contract-auto-solver.js
+```
+
+- No parameters. Scans from home, visits every reachable server, and solves all contracts.
+
+---
+
+## hacknet-opt.ts
+
+**What it does:** Optimizes HackNet node upgrades and purchases. Spends only within income earned from HackNet, scaled by `budgetPct`; when Formulas API is available, picks upgrades by best ROI (return on investment), otherwise picks cheapest. Buys new nodes when ROI compares favorably.
+
+**How to run:**
+
+```bash
+run hacknet-opt.js              # default: 1 level per upgrade, 50% budget
 run hacknet-opt.js 5            # upgrade 5 levels at a time for level upgrades
+run hacknet-opt.js 1 80         # 1 level per upgrade, use 80% of HackNet budget
 ```
 
 - **Arg 1 (optional):** `numLevels` — how many levels to buy per level upgrade (default: 1).
+- **Arg 2 (optional):** `budgetPct` — percentage of available HackNet budget to spend per purchase (default: 50).
 
 ---
 
 ## pserv-opt.ts
 
-**What it does:** Optimizes purchased servers. Buys new servers at increasing RAM tiers (128GB → 256GB → … up to 1PB) when you have the slots and funds. When at server limit, upgrades the smallest server by deleting and repurchasing. Only buys when cash ≥ cost / 0.25 (configurable `moneyThreshold`).
+**What it does:** Optimizes purchased servers. Buys new servers at increasing RAM tiers (128GB → 2TB → 32TB → 512TB → … up to 1PB) when you have the slots and funds. When at server limit, upgrades the smallest server by deleting and repurchasing. Only buys when cash ≥ cost / 0.25 (configurable `moneyThreshold`).
 
 **How to run:**
 
@@ -99,20 +129,6 @@ Tip: Visit a company, click Infiltrate, and the script will run when the infiltr
 
 ---
 
-## contract-auto-solver.ts
-
-**What it does:** Walks the network with a depth-first search and automatically solves any coding contracts (`.cct` files) found on each server. Uses the `solveContract` helper for each contract type. High RAM (27GB) due to contract solvers.
-
-**How to run:**
-
-```bash
-run contract-auto-solver.js
-```
-
-- No parameters. Scans from home, visits every reachable server, and solves all contracts.
-
----
-
 ## scan.ts
 
 **What it does:** Scans the network and prints a tree of servers with color-coded root access (lime = rooted, red = not), faction server colors (e.g. CSEC yellow, w0r1d_d43m0n red), and contract indicators (©). Hover shows req level, ports, RAM, security, money. Clicking a server inserts a connect command into the terminal.
@@ -124,6 +140,35 @@ run scan.js
 ```
 
 - No parameters. Output is appended to the terminal.
+
+---
+
+## share-server.ts
+
+**What it does:** Deploys `helpers/share-loop.js` to a server and runs it with max available threads. The share loop contributes that server's CPU to your current faction (or gang) to earn reputation when idle. Requires a purchased server dedicated to sharing (e.g. `pserv-share`).
+
+**How to run:**
+
+```bash
+run share-server.js                # use default server pserv-share
+run share-server.js pserv-share-1   # specify a different server
+```
+
+- **Arg 1 (optional):** Server hostname to share from (default: `pserv-share`). Requires `helpers/share-loop.js` to exist.
+
+---
+
+## startup.ts
+
+**What it does:** Launches the main automation stack on home: `open-all-ports`, infiltrate, stockmaster, hacknet-opt (1 level, 100% budget), and pserv-opt. One-shot launcher—does not keep running.
+
+**How to run:**
+
+```bash
+run startup.js
+```
+
+- No parameters. Starts all scripts and exits. Requires the launched scripts to exist on home.
 
 ---
 

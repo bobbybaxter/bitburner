@@ -22,7 +22,7 @@ export async function main(ns: NS): Promise<void> {
 
   if (shouldRestartAll) {
     ns.tprint(`optimal target has updated from ${currentTarget} to ${availableServers[0].hostname}`);
-    ns.exec('/hack-lvl-1-helpers/restart-all.js', 'home');
+    ns.exec('/hack1-helpers/restart-all.js', 'home');
   } else {
     ns.tprint('optimal target remains ', availableServers[0].hostname);
   }

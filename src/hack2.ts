@@ -103,7 +103,7 @@ export async function main(ns: NS): Promise<void> {
       await ns.sleep(5000);
     }
   } catch (e) {
-    console.error('Error with hack-lvl-2-service.js', e);
+    console.error('Error with hack2-service.js', e);
   }
 }
 
