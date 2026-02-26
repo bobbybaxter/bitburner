@@ -36,7 +36,7 @@ const scriptBaseCost = 1.75;
 /** Delay (ms) between batch completions. Batches are pipelined over one weaken runtime; maxBatch = ceil(weakenTime / batchStepMs) gives pipeline capacity, but threads usually limit actual batches. */
 const batchStepMs = 200;
 /** RAM (GB) to reserve on home for startup scripts (open-all-ports, infiltrate, stockmaster, etc.). */
-const homeRamReserveGb = 26;
+const homeRamReserveGb = 60;
 /** When home has less RAM than this, use percent-based reserve instead (10% = reserve when home < 260GB). */
 const homeRamPercentReserve = 0.1;
 
@@ -52,6 +52,12 @@ const openAllPortsIntervalMs = 30_000;
 const serverNamesCacheMs = 60_000;
 /** Max targets to hack (focus on best). Combined with thread budget for hybrid selection. */
 const maxTargetsToHack = 10;
+/** Max batches per target per run. Caps total scripts (4 per batch) to reduce game lag. ~50 = 2k scripts for 10 targets. */
+const maxBatchesPerTargetPerRun = 50;
+/** Spawn scripts in chunks to avoid freezing. Yield every N execs so the game stays responsive. */
+const execChunkSize = 25;
+/** Ms to yield between exec chunks. Higher = less freeze, slower ramp-up. */
+const execChunkDelayMs = 5;
 
 export async function main(ns: NS): Promise<void> {
   disableNoisyLogs(ns);
@@ -61,6 +67,7 @@ export async function main(ns: NS): Promise<void> {
 
   while (true) {
     try {
+      await ns.sleep(0);
       const now = Date.now();
       if (now - lastOpenAllPortsTime >= openAllPortsIntervalMs) {
         await ns.run('open-all-ports.js', 1, 'home');
@@ -69,6 +76,7 @@ export async function main(ns: NS): Promise<void> {
       if (!cachedServerNames || now - lastServerNamesTime >= serverNamesCacheMs) {
         cachedServerNames = getServerNames(ns);
         lastServerNamesTime = now;
+        await ns.sleep(0);
       }
       const allServerNames = cachedServerNames;
       const hostCandidates = new Map(
@@ -164,6 +172,7 @@ export async function main(ns: NS): Promise<void> {
         if (!ok) ns.tprint(`WARN: scp to ${host.hostname} failed`);
       }
 
+      await ns.sleep(0);
       const finalTargetServers = await chooseTargets({
         ns,
         hostServers: hostServers as HostServer[],
@@ -174,8 +183,9 @@ export async function main(ns: NS): Promise<void> {
         await ns.sleep(1000);
       } else {
         await schedule({ ns, targetServers: finalTargetServers });
+        const scriptsSpawned = batchesToSchedule * 4;
+        await ns.sleep(scriptsSpawned > 5000 ? 75 : scriptsSpawned > 2000 ? 40 : 20);
       }
-      await ns.sleep(20);
     } catch (e) {
       ns.tprint(`ERROR hack3: ${e instanceof Error ? e.message : String(e)}`);
       await ns.sleep(5000);
@@ -317,13 +327,17 @@ async function chooseTargets({
       Math.floor(ns.getServerMoneyAvailable(s.hostname)) > 0 &&
       ns.getServerMaxRam(s.hostname) >= scriptBaseCost,
   );
-  const scoredAndSorted = preppedCandidates
-    .map((s) => ({
+  const scoredAndSorted: Array<(typeof preppedCandidates)[0] & { score: number; threadsPerBatch: number }> = [];
+  for (let i = 0; i < preppedCandidates.length; i++) {
+    if (i > 0 && i % 20 === 0) await ns.sleep(0);
+    const s = preppedCandidates[i];
+    scoredAndSorted.push({
       ...s,
       score: scoreTargetForBatch(ns, s.hostname),
       threadsPerBatch: computeThreadsPerBatch(ns, s.hostname, 0.01),
-    }))
-    .sort((a, b) => b.score - a.score);
+    });
+  }
+  scoredAndSorted.sort((a, b) => b.score - a.score);
 
   const filteredBestServers: typeof scoredAndSorted = [];
   let threadsReserved = 0;
@@ -388,7 +402,13 @@ async function chooseTargets({
   });
 
   while (smallestTotalHackThreadsPerCycle !== null && finalHostServerThreads > smallestTotalHackThreadsPerCycle) {
+    const batchesSoFar = finalTargetServers.reduce((acc, s) => acc + s.batches.length, 0);
+    if (batchesSoFar >= maxTargetsToHack * maxBatchesPerTargetPerRun) break;
+
     bestServersToHack.forEach((targetServer) => {
+      const targetBatches = finalTargetServers.find((s) => s.hostname === targetServer.hostname)?.batches.length ?? 0;
+      if (targetBatches >= maxBatchesPerTargetPerRun) return;
+
       finalHostServerThreads = finalHostServers.reduce((acc, server) => acc + server.availableThreads, 0);
 
       if (smallestTotalHackThreadsPerCycle !== null && finalHostServerThreads < smallestTotalHackThreadsPerCycle)
@@ -550,6 +570,7 @@ function findOptimalHackFraction(
 }
 
 async function schedule({ ns, targetServers }: { ns: NS; targetServers: TargetServerWithBatches[] }): Promise<void> {
+  let execCount = 0;
   // Iterate through each target server
   for (const targetServer of targetServers) {
     const { batches, hackTime, weakenTime, growTime } = targetServer;
@@ -602,6 +623,8 @@ async function schedule({ ns, targetServers }: { ns: NS; targetServers: TargetSe
         if (pid === 0 && host !== 'home') {
           ns.tprint(`WARN: exec ${script} on ${host} failed (script exists? ${ns.fileExists(script, host)})`);
         }
+        execCount++;
+        if (execCount % execChunkSize === 0) await ns.sleep(execChunkDelayMs);
       }
 
       // Update lastTaskEndTime to the end of the last task in this batch
