@@ -889,28 +889,54 @@ function hammingCodes2(ns: NS, data: string): number {
   return HammingDecode(data);
 }
 
-function proper2ColoringOfAGraph(ns: NS, data: number[][]): string {
-  return '[]';
+function proper2ColoringOfAGraph(ns: NS, data: [number, number[][]]): number[] {
+  const [numVertices, edges] = data;
+  const adj: number[][] = Array.from({ length: numVertices }, () => []);
+  for (const [u, v] of edges) {
+    adj[u].push(v);
+    adj[v].push(u);
+  }
+
+  const colors = new Array<number>(numVertices).fill(-1);
+  for (let start = 0; start < numVertices; start++) {
+    if (colors[start] !== -1) continue;
+    colors[start] = 0;
+    const queue = [start];
+    while (queue.length > 0) {
+      const node = queue.shift()!;
+      for (const neighbor of adj[node]) {
+        if (colors[neighbor] === -1) {
+          colors[neighbor] = colors[node] ^ 1;
+          queue.push(neighbor);
+        } else if (colors[neighbor] === colors[node]) {
+          return [];
+        }
+      }
+    }
+  }
+  return colors;
 }
 
-function compression1(ns: NS, data: string): number {
+function compression1(ns: NS, data: string): string {
   if (typeof data !== 'string') throw new Error('solver expected string');
 
-  let length = 0;
+  let encoded = '';
   for (let i = 0; i < data.length; ) {
-    let run_length = 1;
-    while (i + run_length < data.length && data[i + run_length] === data[i]) {
-      ++run_length;
+    let runLength = 1;
+    while (i + runLength < data.length && data[i + runLength] === data[i]) {
+      ++runLength;
     }
-    i += run_length;
+    const ch = data[i];
+    i += runLength;
 
-    while (run_length > 0) {
-      run_length -= 9;
-      length += 2;
+    while (runLength > 0) {
+      const chunk = Math.min(runLength, 9);
+      encoded += String(chunk) + ch;
+      runLength -= chunk;
     }
   }
 
-  return length;
+  return encoded;
 }
 
 function compression2(ns: NS, data: string): string | null {
