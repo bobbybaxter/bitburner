@@ -1,3 +1,4 @@
+//
 import { NS, Server } from '@ns';
 import { disableNoisyLogs, formulas, getServerNames } from '/helpers/index.js';
 
@@ -33,31 +34,24 @@ interface TargetServerWithBatches {
 }
 
 const scriptBaseCost = 1.75;
-/** Delay (ms) between batch completions. Batches are pipelined over one weaken runtime; maxBatch = ceil(weakenTime / batchStepMs) gives pipeline capacity, but threads usually limit actual batches. */
-const batchStepMs = 200;
-/** RAM (GB) to reserve on home for startup scripts (open-all-ports, infiltrate, stockmaster, etc.). */
+const batchStepMs = 500;
 const homeRamReserveGb = 60;
-/** When home has less RAM than this, use percent-based reserve instead (10% = reserve when home < 260GB). */
 const homeRamPercentReserve = 0.1;
-
-/** Security must be at or below minSec + this for "prepped". */
 const prepSecurityEpsilon = 0.001;
-/** Money must be at or above this fraction of max for "prepped" (e.g. 0.99 = 99%). */
 const prepMoneyFraction = 0.99;
-/** Max hack fraction when auto-tuning (caps at 25% to avoid grow explosion). */
-const maxHackFractionCap = 0.25;
-/** Run open-all-ports at most this often (ms). Reduces orchestration RAM tax. */
+const maxHackFractionCap = 0.9;
+const prepThreadBudgetFraction = 0.5;
 const openAllPortsIntervalMs = 30_000;
-/** Cache getServerNames for this long (ms). Network topology is static. */
 const serverNamesCacheMs = 60_000;
-/** Max targets to hack (focus on best). Combined with thread budget for hybrid selection. */
+
 const maxTargetsToHack = 10;
-/** Max batches per target per run. Caps total scripts (4 per batch) to reduce game lag. ~50 = 2k scripts for 10 targets. */
-const maxBatchesPerTargetPerRun = 50;
-/** Spawn scripts in chunks to avoid freezing. Yield every N execs so the game stays responsive. */
-const execChunkSize = 25;
-/** Ms to yield between exec chunks. Higher = less freeze, slower ramp-up. */
-const execChunkDelayMs = 5;
+const maxTotalRunningScripts = 25_000;
+const maxBatchesPerTargetPerRun = 25;
+const minThreadsPerExec = 4;
+
+const execChunkSize = 10;
+const execChunkDelayMs = 15;
+const targetStaggerMs = 500;
 
 export async function main(ns: NS): Promise<void> {
   disableNoisyLogs(ns);
@@ -65,9 +59,11 @@ export async function main(ns: NS): Promise<void> {
   let cachedServerNames: ReturnType<typeof getServerNames> | null = null;
   let lastServerNamesTime = 0;
 
+  let cycleCount = 0;
   while (true) {
     try {
       await ns.sleep(0);
+      cycleCount++;
       const now = Date.now();
       if (now - lastOpenAllPortsTime >= openAllPortsIntervalMs) {
         await ns.run('open-all-ports.js', 1, 'home');
@@ -83,9 +79,11 @@ export async function main(ns: NS): Promise<void> {
         allServerNames.map((s) => [s.hostname, { hostname: s.hostname, name: s.name, depth: s.depth }]),
       );
       for (const name of ns.getPurchasedServers()) {
+        if (name === 'pserv-share') continue;
         if (!hostCandidates.has(name)) hostCandidates.set(name, { hostname: name, name, depth: 1 });
       }
       const availableServers = [...hostCandidates.values()].filter((server) => {
+        if (server.hostname === 'pserv-share') return false;
         try {
           return ns.hasRootAccess(server.hostname) && ns.getServerMaxRam(server.hostname) >= scriptBaseCost;
         } catch {
@@ -118,6 +116,8 @@ export async function main(ns: NS): Promise<void> {
           (server) =>
             server.availableThreads > 0 && ns.getServerRequiredHackingLevel(server.hostname) <= ns.getHackingLevel(),
         );
+
+      const totalThreads = hostServers.reduce((acc, s) => acc + s.availableThreads, 0);
 
       const targetServers = availableServers
         .filter((server) => {
@@ -155,6 +155,7 @@ export async function main(ns: NS): Promise<void> {
         });
 
       if (targetServers.length === 0) {
+        ns.print(`cycle ${cycleCount}: no targets to hack, sleeping for 1 minute`);
         await ns.sleep(1000 * 60);
         continue;
       }
@@ -172,6 +173,18 @@ export async function main(ns: NS): Promise<void> {
         if (!ok) ns.tprint(`WARN: scp to ${host.hostname} failed`);
       }
 
+      const totalRunningScripts = hostServers.reduce((sum, host) => sum + ns.ps(host.hostname).length, 0);
+      ns.print(
+        `cycle ${cycleCount}: ${hostServers.length} hosts, ${targetServers.length} targets, ${totalThreads} threads, ${totalRunningScripts} running scripts`,
+      );
+      if (totalRunningScripts >= maxTotalRunningScripts) {
+        ns.tprint(
+          `[hack3] cycle ${cycleCount}: ${totalRunningScripts} scripts running (>= ${maxTotalRunningScripts}), pausing 5s`,
+        );
+        await ns.sleep(5000);
+        continue;
+      }
+
       await ns.sleep(0);
       const finalTargetServers = await chooseTargets({
         ns,
@@ -179,12 +192,21 @@ export async function main(ns: NS): Promise<void> {
         targetServers: targetServers as TargetServerWithBatches[],
       });
       const batchesToSchedule = finalTargetServers.reduce((acc, server) => acc + server.batches.length, 0);
+      const hackBatches = finalTargetServers.reduce(
+        (acc, s) => acc + s.batches.filter((b) => b.some((e) => e.type === 'hack')).length,
+        0,
+      );
+      const prepBatches = batchesToSchedule - hackBatches;
+      ns.print(`cycle ${cycleCount}: ${prepBatches} prep + ${hackBatches} hack batches`);
       if (batchesToSchedule === 0) {
+        ns.print(`cycle ${cycleCount}: no batches to schedule, sleeping for 1 second`);
         await ns.sleep(1000);
       } else {
-        await schedule({ ns, targetServers: finalTargetServers });
+        await schedule({ ns, targetServers: finalTargetServers, hostnames: hostServers.map((h) => h.hostname) });
         const scriptsSpawned = batchesToSchedule * 4;
-        await ns.sleep(scriptsSpawned > 5000 ? 75 : scriptsSpawned > 2000 ? 40 : 20);
+        const sleepMs = scriptsSpawned > 5000 ? 2000 : scriptsSpawned > 2000 ? 1000 : scriptsSpawned > 500 ? 500 : 100;
+        ns.print(`cycle ${cycleCount}: sleeping for ${sleepMs}ms`);
+        await ns.sleep(sleepMs);
       }
     } catch (e) {
       ns.tprint(`ERROR hack3: ${e instanceof Error ? e.message : String(e)}`);
@@ -209,15 +231,32 @@ async function chooseTargets({
   // while (finalHostServerThreads > 0) {
   // for (let i = 0; i < 1; i++) {
   let finalHostServerThreads = finalHostServers.reduce((acc, server) => acc + server.availableThreads, 0);
-  // console.log(`STARTING OUTER LOOP - host threads left to use: ${finalHostServerThreads}`);
 
   if (finalHostServerThreads < 2) {
+    ns.print(`chooseTargets: no threads left to use, sleeping for 1 second`);
     await ns.sleep(1000);
   }
 
-  // Prep phase: bring targets to minSec + maxMoney before batching.
-  // Phase 1: weaken only until security at min. Phase 2: grow+weaken until money at max.
-  finalTargetServers.forEach((targetServer) => {
+  // Sort targets by profitability so best targets get prepped first
+  const prepScores = new Map<string, number>();
+  for (let i = 0; i < finalTargetServers.length; i++) {
+    if (i > 0 && i % 20 === 0) await ns.sleep(0);
+    prepScores.set(finalTargetServers[i].hostname, scoreTargetForBatch(ns, finalTargetServers[i].hostname));
+  }
+  finalTargetServers.sort((a, b) => (prepScores.get(b.hostname) ?? 0) - (prepScores.get(a.hostname) ?? 0));
+
+  // Reserve threads for hacking when prepped targets already exist;
+  // if nothing is prepped yet, give all threads to prep so the first target finishes fast.
+  const hasPreppedTargets = finalTargetServers.some((s) => isPrepped(ns, s.hostname));
+  const effectivePrepFraction = hasPreppedTargets ? prepThreadBudgetFraction : 1.0;
+  const reservedForHack = new Map<string, number>();
+  for (const host of finalHostServers) {
+    const reserved = Math.ceil(host.availableThreads * (1 - effectivePrepFraction));
+    reservedForHack.set(host.hostname, reserved);
+    host.availableThreads -= reserved;
+  }
+
+  for (const targetServer of finalTargetServers) {
     const currentMoney = ns.getServerMoneyAvailable(targetServer.hostname);
     const currentSecurity = ns.getServerSecurityLevel(targetServer.hostname);
     const minSec = ns.getServerMinSecurityLevel(targetServer.hostname);
@@ -226,38 +265,22 @@ async function chooseTargets({
     const securityAtMin = currentSecurity <= minSec + prepSecurityEpsilon;
 
     let tempHostServers = finalHostServers.map((s) => ({ ...s }));
-    tempHostServers = tempHostServers.sort((a, b) => a.availableThreads - b.availableThreads);
+    tempHostServers = tempHostServers.sort((a, b) => b.availableThreads - a.availableThreads);
     let tempHostServerAvailableThreads = tempHostServers.reduce((acc, server) => acc + server.availableThreads, 0);
 
     const weakenEvents: BatchEvent[] = [];
     const growEvents: BatchEvent[] = [];
 
-    // Phase 1: Weaken until security at minimum. Do not start grow until done.
     if (!securityAtMin && tempHostServerAvailableThreads > 0) {
       const securityToRemove = currentSecurity - minSec;
       const weakenThreadsNeeded = Math.min(Math.ceil(securityToRemove / 0.05), tempHostServerAvailableThreads);
 
       if (weakenThreadsNeeded > 0) {
-        let threadsLeft = weakenThreadsNeeded;
-        for (const server of tempHostServers) {
-          if (server.availableThreads > 0 && threadsLeft > 0) {
-            const allocatedThreads = Math.min(server.availableThreads, threadsLeft);
-            server.availableThreads -= allocatedThreads;
-            threadsLeft -= allocatedThreads;
-            weakenEvents.push({
-              host: server.hostname,
-              target: targetServer.hostname,
-              threads: allocatedThreads,
-              type: 'weaken1',
-            });
-            if (threadsLeft === 0) break;
-          }
-        }
+        weakenEvents.push(...allocateThreads(tempHostServers, weakenThreadsNeeded, targetServer.hostname, 'weaken1'));
         tempHostServerAvailableThreads = tempHostServers.reduce((acc, s) => acc + s.availableThreads, 0);
       }
     }
 
-    // Phase 2: Grow+weaken only when security is at min.
     if (securityAtMin && currentMoney < moneyThreshold && tempHostServerAvailableThreads > 0) {
       let growThreadsNeeded: number;
       if (ns.fileExists('/Formulas.exe')) {
@@ -276,48 +299,24 @@ async function chooseTargets({
       const totalThreadsNeeded = growThreadsNeeded + weaken2ThreadsNeeded;
 
       if (tempHostServerAvailableThreads >= totalThreadsNeeded) {
-        let growLeft = growThreadsNeeded;
-        let weaken2Left = weaken2ThreadsNeeded;
-
-        for (const server of tempHostServers) {
-          if (server.availableThreads > 0 && growLeft > 0) {
-            const allocatedThreads = Math.min(server.availableThreads, growLeft);
-            server.availableThreads -= allocatedThreads;
-            growLeft -= allocatedThreads;
-            growEvents.push({
-              host: server.hostname,
-              target: targetServer.hostname,
-              threads: allocatedThreads,
-              type: 'grow',
-            });
-            if (growLeft === 0) break;
-          }
-        }
-
-        for (const server of tempHostServers) {
-          if (server.availableThreads > 0 && weaken2Left > 0) {
-            const allocatedThreads = Math.min(server.availableThreads, weaken2Left);
-            server.availableThreads -= allocatedThreads;
-            weaken2Left -= allocatedThreads;
-            growEvents.push({
-              host: server.hostname,
-              target: targetServer.hostname,
-              threads: allocatedThreads,
-              type: 'weaken2',
-            });
-            if (weaken2Left === 0) break;
-          }
-        }
+        growEvents.push(...allocateThreads(tempHostServers, growThreadsNeeded, targetServer.hostname, 'grow'));
+        growEvents.push(...allocateThreads(tempHostServers, weaken2ThreadsNeeded, targetServer.hostname, 'weaken2'));
       }
     }
 
-    if (weakenEvents.length === 0 && growEvents.length === 0) return;
+    if (weakenEvents.length === 0 && growEvents.length === 0) continue;
 
     const index = finalTargetServers.findIndex((server) => server.hostname === targetServer.hostname);
     finalTargetServers[index].batches.push([...weakenEvents, ...growEvents]);
 
     finalHostServers = tempHostServers;
-  });
+  }
+
+  // Restore reserved threads for hacking phase
+  for (const host of finalHostServers) {
+    host.availableThreads += reservedForHack.get(host.hostname) ?? 0;
+  }
+  finalHostServerThreads = finalHostServers.reduce((acc, s) => acc + s.availableThreads, 0);
 
   let smallestTotalHackThreadsPerCycle: number | null = null;
 
@@ -327,6 +326,11 @@ async function chooseTargets({
       Math.floor(ns.getServerMoneyAvailable(s.hostname)) > 0 &&
       ns.getServerMaxRam(s.hostname) >= scriptBaseCost,
   );
+  const unprepCount = finalTargetServers.length - preppedCandidates.length;
+  const prepBatchCount = finalTargetServers.reduce((acc, s) => acc + s.batches.length, 0);
+  if (unprepCount > 0) {
+    ns.print(`prep: ${unprepCount} targets still prepping (${prepBatchCount} prep batches)`);
+  }
   const scoredAndSorted: Array<(typeof preppedCandidates)[0] & { score: number; threadsPerBatch: number }> = [];
   for (let i = 0; i < preppedCandidates.length; i++) {
     if (i > 0 && i % 20 === 0) await ns.sleep(0);
@@ -349,16 +353,18 @@ async function chooseTargets({
     } else break;
   }
 
-  const hackFraction =
-    filteredBestServers.length > 0
-      ? findOptimalHackFraction(
-          ns,
-          filteredBestServers[0].name,
-          finalHostServerThreads,
-          filteredBestServers.length,
-          finalTargetServers.find((s) => s.hostname === filteredBestServers[0].name)?.maxBatch ?? 150,
-        )
-      : 0.01;
+  if (filteredBestServers.length === 0) {
+    ns.print(`hack: no prepped targets yet, prep only this cycle`);
+    return finalTargetServers;
+  }
+
+  const hackFraction = findOptimalHackFraction(
+    ns,
+    filteredBestServers[0].name,
+    finalHostServerThreads,
+    filteredBestServers.length,
+    maxBatchesPerTargetPerRun,
+  );
 
   const bestServersToHack = filteredBestServers.map((server) => {
     const optimalServer = getOptimalServer({ ns, targetServer: server.name });
@@ -401,9 +407,14 @@ async function chooseTargets({
     };
   });
 
+  ns.print(
+    `hack: ${filteredBestServers.length} targets [${filteredBestServers.map((s) => s.name).join(', ')}], hackFrac=${(hackFraction * 100).toFixed(1)}%`,
+  );
   while (smallestTotalHackThreadsPerCycle !== null && finalHostServerThreads > smallestTotalHackThreadsPerCycle) {
     const batchesSoFar = finalTargetServers.reduce((acc, s) => acc + s.batches.length, 0);
     if (batchesSoFar >= maxTargetsToHack * maxBatchesPerTargetPerRun) break;
+
+    const threadsBefore = finalHostServers.reduce((acc, s) => acc + s.availableThreads, 0);
 
     bestServersToHack.forEach((targetServer) => {
       const targetBatches = finalTargetServers.find((s) => s.hostname === targetServer.hostname)?.batches.length ?? 0;
@@ -415,7 +426,7 @@ async function chooseTargets({
         return;
 
       let tempHostServers = finalHostServers.map((s) => ({ ...s }));
-      tempHostServers = tempHostServers.sort((a, b) => a.availableThreads - b.availableThreads);
+      tempHostServers = tempHostServers.sort((a, b) => b.availableThreads - a.availableThreads);
 
       let hackThreadsLeft = targetServer.currentHackThreadsPerCycle;
       let growThreadsLeft = targetServer.currentGrowThreadsPerCycle;
@@ -493,9 +504,41 @@ async function chooseTargets({
 
       finalHostServers = tempHostServers;
     });
+
+    const threadsAfter = finalHostServers.reduce((acc, s) => acc + s.availableThreads, 0);
+    if (threadsAfter >= threadsBefore) break;
   }
 
   return finalTargetServers;
+}
+
+/** Allocate threads to hosts, preferring a single host that can handle the full request. Falls back to fragmented allocation, skipping hosts below minThreadsPerExec. */
+function allocateThreads(
+  hosts: Array<{ hostname: string; availableThreads: number }>,
+  threadsNeeded: number,
+  target: string,
+  type: string,
+): BatchEvent[] {
+  if (threadsNeeded <= 0) return [];
+  const events: BatchEvent[] = [];
+
+  const singleHost = hosts.find((h) => h.availableThreads >= threadsNeeded);
+  if (singleHost) {
+    singleHost.availableThreads -= threadsNeeded;
+    events.push({ host: singleHost.hostname, target, threads: threadsNeeded, type });
+    return events;
+  }
+
+  let threadsLeft = threadsNeeded;
+  for (const host of hosts) {
+    if (threadsLeft <= 0) break;
+    if (host.availableThreads < minThreadsPerExec) continue;
+    const allocated = Math.min(host.availableThreads, threadsLeft);
+    host.availableThreads -= allocated;
+    threadsLeft -= allocated;
+    events.push({ host: host.hostname, target, threads: allocated, type });
+  }
+  return events;
 }
 
 function getOptimalServer({ ns, targetServer }: { ns: NS; targetServer: string }): Server {
@@ -569,14 +612,47 @@ function findOptimalHackFraction(
   return low;
 }
 
-async function schedule({ ns, targetServers }: { ns: NS; targetServers: TargetServerWithBatches[] }): Promise<void> {
-  let execCount = 0;
-  // Iterate through each target server
-  for (const targetServer of targetServers) {
-    const { batches, hackTime, weakenTime, growTime } = targetServer;
+function findFallbackHost(ns: NS, hostnames: string[], failedHost: string, threads: number): string | null {
+  const ramNeeded = threads * scriptBaseCost;
+  for (const host of hostnames) {
+    if (host === failedHost) continue;
+    try {
+      const maxRam = ns.getServerMaxRam(host);
+      const usedRam = ns.getServerUsedRam(host);
+      let available = maxRam - usedRam;
+      if (host === 'home') {
+        const reserve =
+          maxRam >= homeRamReserveGb / homeRamPercentReserve
+            ? homeRamReserveGb
+            : Math.floor(maxRam * homeRamPercentReserve);
+        available -= reserve;
+      }
+      if (available >= ramNeeded) return host;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
 
-    // Set initial time from which the first batch will start
-    let previousTaskEndTime = Date.now();
+async function schedule({
+  ns,
+  targetServers,
+  hostnames,
+}: {
+  ns: NS;
+  targetServers: TargetServerWithBatches[];
+  hostnames: string[];
+}): Promise<void> {
+  let execCount = 0;
+  const baseTime = Date.now();
+
+  // Iterate through each target server
+  for (let targetIndex = 0; targetIndex < targetServers.length; targetIndex++) {
+    const targetServer = targetServers[targetIndex];
+    const { batches, hackTime, weakenTime, growTime } = targetServer;
+    // Stagger each target's first batch so they don't all finish at once (avoids game freeze).
+    let previousTaskEndTime = baseTime + targetIndex * targetStaggerMs;
 
     // Process each batch
     for (const batch of batches) {
@@ -617,19 +693,43 @@ async function schedule({ ns, targetServers }: { ns: NS; targetServers: TargetSe
         taskEndTime = startTime + delay;
       }
 
-      // Execute all scripts in parallel (they schedule with their own delays)
-      for (const { script, host, target, threads, waitTime } of execParams) {
-        const pid = ns.exec(script, host, threads, target, threads, waitTime);
-        if (pid === 0 && host !== 'home') {
-          ns.tprint(`WARN: exec ${script} on ${host} failed (script exists? ${ns.fileExists(script, host)})`);
+      const launchedPids: number[] = [];
+      let batchAborted = false;
+
+      for (const params of execParams) {
+        const { script, target, threads, waitTime } = params;
+        let host = params.host;
+        let pid = ns.exec(script, host, threads, target, threads, waitTime);
+
+        if (pid === 0) {
+          const fallback = findFallbackHost(ns, hostnames, host, threads);
+          if (fallback) {
+            if (fallback !== 'home' && !ns.fileExists(script, fallback)) {
+              ns.scp([script], fallback, 'home');
+            }
+            host = fallback;
+            pid = ns.exec(script, host, threads, target, threads, waitTime);
+          }
         }
+
+        if (pid === 0) {
+          ns.tprint(
+            `WARN: batch for ${target} aborted — ${params.host} unavailable, no fallback with ${threads} threads free`,
+          );
+          for (const p of launchedPids) ns.kill(p);
+          batchAborted = true;
+          break;
+        }
+
+        launchedPids.push(pid);
         execCount++;
-        if (execCount % execChunkSize === 0) await ns.sleep(execChunkDelayMs);
+        if (execCount % execChunkSize === 0) {
+          await ns.sleep(execChunkDelayMs);
+        }
       }
 
-      // Update lastTaskEndTime to the end of the last task in this batch
+      if (batchAborted) continue;
       previousTaskEndTime = taskEndTime;
     }
   }
-  // console.log('All batches have been scheduled.');
 }
