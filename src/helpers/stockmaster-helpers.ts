@@ -1,5 +1,6 @@
 import type { NS } from '@ns';
 import { Do } from '/helpers/do.js';
+import { Stack } from '/helpers/Stack.js';
 
 /**
  * Return a formatted representation of the monetary amount using scale symbols (e.g. $6.50M)
@@ -513,17 +514,17 @@ export function log(
  * @param {NS} ns - The nestcript instance passed to your script's main entry point */
 export function scanAllServers(ns: NS): string[] {
   checkNsInstance(ns, '"scanAllServers"');
-  const discoveredHosts: string[] = []; // Hosts (a.k.a. servers) we have scanned
-  const hostsToScan: string[] = ['home']; // Hosts we know about, but have no yet scanned
-  let infiniteLoopProtection = 9999; // In case you mess with this code, this should save you from getting stuck
-  while (hostsToScan.length > 0 && infiniteLoopProtection-- > 0) {
-    // Loop until the list of hosts to scan is empty
-    const hostName = hostsToScan.pop()!; // Get the next host to be scanned
-    discoveredHosts.push(hostName); // Mark this host as "scanned"
-    for (const connectedHost of ns.scan(hostName)) // "scan" (list all hosts connected to this one)
-      if (!discoveredHosts.includes(connectedHost) && !hostsToScan.includes(connectedHost))
-        // If we haven't found this host
-        hostsToScan.push(connectedHost); // Add it to the queue of hosts to be scanned
+  const discoveredHosts: string[] = [];
+  const seen = new Set<string>();
+  const hostsToScan = new Stack<string>();
+  hostsToScan.push('home');
+  let infiniteLoopProtection = 9999;
+  while (!hostsToScan.isEmpty() && infiniteLoopProtection-- > 0) {
+    const hostName = hostsToScan.pop()!;
+    if (seen.has(hostName)) continue;
+    seen.add(hostName);
+    discoveredHosts.push(hostName);
+    for (const connectedHost of ns.scan(hostName)) if (!seen.has(connectedHost)) hostsToScan.push(connectedHost);
   }
   return discoveredHosts; // The list of scanned hosts should now be the set of all hosts in the game!
 }

@@ -1,4 +1,5 @@
 import { NS } from '@ns';
+import { Queue } from '/helpers/Queue.js';
 
 /*
   How to update the script with solvers in the source code of BitBurner
@@ -901,13 +902,14 @@ function proper2ColoringOfAGraph(ns: NS, data: [number, number[][]]): number[] {
   for (let start = 0; start < numVertices; start++) {
     if (colors[start] !== -1) continue;
     colors[start] = 0;
-    const queue = [start];
-    while (queue.length > 0) {
-      const node = queue.shift()!;
+    const queue = new Queue<number>();
+    queue.enqueue(start);
+    while (!queue.isEmpty()) {
+      const node = queue.dequeue()!;
       for (const neighbor of adj[node]) {
         if (colors[neighbor] === -1) {
           colors[neighbor] = colors[node] ^ 1;
-          queue.push(neighbor);
+          queue.enqueue(neighbor);
         } else if (colors[neighbor] === colors[node]) {
           return [];
         }

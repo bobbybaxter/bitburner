@@ -10,6 +10,7 @@ import { openPorts } from '/helpers/open-ports.js';
 import { Queue } from '/helpers/Queue.js';
 import * as shareLoop from '/helpers/share-loop.js';
 import { solveContract } from '/helpers/solve-contract.js';
+import { Stack } from '/helpers/Stack.js';
 import * as stockmasterHelpers from '/helpers/stockmaster-helpers.js';
 import * as target from '/helpers/target.js';
 
@@ -26,6 +27,7 @@ export {
   Queue,
   shareLoop,
   solveContract,
+  Stack,
   stockmasterHelpers,
   target,
 };

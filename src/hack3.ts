@@ -45,7 +45,7 @@ const openAllPortsIntervalMs = 30_000;
 const serverNamesCacheMs = 60_000;
 
 const maxTargetsToHack = 10;
-const maxTotalRunningScripts = 25_000;
+const maxTotalRunningScripts = 50_000;
 const maxBatchesPerTargetPerRun = 25;
 const minThreadsPerExec = 4;
 

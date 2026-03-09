@@ -1,4 +1,5 @@
 import { NS } from '@ns';
+import { Queue } from '/helpers/Queue.js';
 
 /**
  * @param {{servers: any[]}} data
@@ -15,14 +16,15 @@ export function autocomplete(data: { servers: string[] }): string[] {
 export async function main(ns: NS): Promise<void> {
   const [target] = ns.args;
   const paths: Record<string, string[]> = { home: [] };
-  const queue = Object.keys(paths);
+  const queue = new Queue<string>();
+  queue.enqueue('home');
 
-  while (queue.length > 0) {
-    const current = queue.shift() as string;
+  while (!queue.isEmpty()) {
+    const current = queue.dequeue()!;
     ns.scan(current)
       .filter((e) => !paths[e])
       .forEach((server) => {
-        queue.push(server);
+        queue.enqueue(server);
         paths[server] = paths[current]?.concat([server]) ?? [server];
       });
   }
