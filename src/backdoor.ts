@@ -24,7 +24,7 @@ function getPath(ns: NS, target: string): string[] | null {
 }
 
 export async function main(ns: NS): Promise<void> {
-  ns.disableLog('ALL');
+  // ns.disableLog('ALL');
 
   while (true) {
     const servers = getServerNames(ns)
@@ -39,10 +39,12 @@ export async function main(ns: NS): Promise<void> {
 
       if (server.backdoorInstalled) continue;
       if (!server.hasAdminRights) {
+        ns.print(`SKIP ${hostname}: no root access`);
         remaining++;
         continue;
       }
       if ((server.requiredHackingSkill ?? Infinity) > hackLevel) {
+        ns.print(`SKIP ${hostname}: need hack ${server.requiredHackingSkill}, have ${hackLevel}`);
         remaining++;
         continue;
       }

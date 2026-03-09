@@ -8,8 +8,8 @@ import { Do } from '/helpers/do.js';
 export async function main(ns: NS): Promise<void> {
   // disableNoisyLogs(ns);
 
-  await ns.run('open-all-ports.js', 1); // 4.2GB RAM
   await ns.run('infiltrate.js', 1); // 1.5GB RAM
+  await ns.run('open-all-ports.js', 1); // 4.2GB RAM
   await ns.run('stockmaster.js', 1); // 3.6GB RAM
   await ns.run('hacknet-opt.js', 1, 1, 100); // 7.45GB RAM
   await ns.run('pserv-opt.js', 1); // 8.5GB RAM
@@ -17,7 +17,14 @@ export async function main(ns: NS): Promise<void> {
   const hasSF4 = ns.getResetInfo().ownedSF.has(4);
   if (!hasSF4) return;
 
+  await Do(ns, 'ns.singularity.travelToCity', 'Sector-12');
+  await Do(ns, 'ns.singularity.goToLocation', 'MegaCorp');
+  await ns.sleep(200);
+  const doc = eval('document');
+  const infiltrateBtn = [...doc.querySelectorAll('button')].find((b: Element) => b.textContent?.includes('Infiltrate'));
+  if (infiltrateBtn) (infiltrateBtn as HTMLElement).click();
   await ns.run('backdoor.js', 1);
+  await ns.run('augs.js', 1);
 
   while (!ns.hasTorRouter()) {
     await Do(ns, 'ns.singularity.purchaseTor');

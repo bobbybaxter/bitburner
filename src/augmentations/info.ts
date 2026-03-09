@@ -60,7 +60,7 @@ export async function main(ns: NS): Promise<void> {
   }
 
   ns.clearLog();
-  ns.tail();
+  ns.ui.openTail();
 
   if (augName) {
     ns.print(await reportOnAugmentation(ns, augName));

@@ -71,7 +71,7 @@ export async function main(ns: NS): Promise<void> {
   if (flags.begin) {
     await buyAugs(ns, domains);
   } else {
-    ns.tail();
+    ns.ui.openTail();
   }
 }
 
@@ -97,17 +97,17 @@ export async function buyAugs(ns: NS, domains: string[]): Promise<void> {
     }
     await ns.sleep(100);
   }
-  ns.tprint(
-    [
-      "Finished buying augmentations. Don't forget:",
-      '  - Buy augmentations for sleeves',
-      '  - Buy equipment for gang members',
-      '  - Upgrade home server',
-      '  - Spend hacknet hashes on Bladeburner rank and SP',
-      '  - Spend hacknet hashes on corporation research and funds',
-      '  - Buyback corporation shares',
-    ].join('\n'),
-  );
+  // ns.tprint(
+  //   [
+  //     "Finished buying augmentations. Don't forget:",
+  //     '  - Buy augmentations for sleeves',
+  //     '  - Buy equipment for gang members',
+  //     '  - Upgrade home server',
+  //     '  - Spend hacknet hashes on Bladeburner rank and SP',
+  //     '  - Spend hacknet hashes on corporation research and funds',
+  //     '  - Buyback corporation shares',
+  //   ].join('\n'),
+  // );
 }
 
 export async function planAugs(

@@ -25,7 +25,7 @@ export async function instanceCount(ns: NS, onHost = 'home', warn = true, tailOt
       );
     if (tailOtherInstances)
       // Tail all but the last pid, since it will belong to the current instance (which will be shut down)
-      others.slice(0, others.length - 1).forEach((pid) => ns.tail(pid));
+      others.slice(0, others.length - 1).forEach((pid) => ns.ui.openTail(pid));
   }
   return others.length;
 }

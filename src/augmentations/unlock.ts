@@ -30,6 +30,7 @@ interface ExtendedPlayer {
   skills: { hacking: number; strength: number; [key: string]: number };
   jobs: Partial<Record<string, string>>;
   city: string;
+  money: number;
   currentNode?: number;
   sourceFiles?: Array<{ n: number }>;
   augmentations?: string[];
@@ -153,8 +154,28 @@ export async function unlockAugs(ns: NS, domains: string[]): Promise<void> {
       console.log(`Already in faction: ${joinableFaction.name}`);
     }
 
-    break;
+    continue;
   }
+}
+
+interface HacknetTotals {
+  totalLevels: number;
+  totalRAM: number;
+  totalCores: number;
+}
+
+async function getHacknetTotals(ns: NS): Promise<HacknetTotals> {
+  const numNodes = (await Do(ns, 'ns.hacknet.numNodes')) as number;
+  let totalLevels = 0;
+  let totalRAM = 0;
+  let totalCores = 0;
+  for (let i = 0; i < numNodes; i++) {
+    const stats = (await Do(ns, 'ns.hacknet.getNodeStats', i)) as { level: number; ram: number; cores: number };
+    totalLevels += stats.level;
+    totalRAM += stats.ram;
+    totalCores += stats.cores;
+  }
+  return { totalLevels, totalRAM, totalCores };
 }
 
 export async function getUnmetRequirements(
@@ -163,7 +184,45 @@ export async function getUnmetRequirements(
 ): Promise<PlayerRequirement[]> {
   const unmetRequirements: PlayerRequirement[] = [];
 
+  const handledTypes = new Set([
+    'backdoorInstalled',
+    'money',
+    'city',
+    'skills',
+    'someCondition',
+    'hacknetLevels',
+    'hacknetRAM',
+    'hacknetCores',
+  ]);
+
   for (const req of faction.inviteReqs) {
+    if (!handledTypes.has(req.type)) {
+      unmetRequirements.push(req);
+      continue;
+    }
+
+    if (req.type === 'hacknetLevels' || req.type === 'hacknetRAM' || req.type === 'hacknetCores') {
+      const totals = await getHacknetTotals(ns);
+      const statMap: Record<string, { current: number; required: number }> = {
+        hacknetLevels: {
+          current: totals.totalLevels,
+          required: (req as PlayerRequirement & { hacknetLevels: number }).hacknetLevels,
+        },
+        hacknetRAM: {
+          current: totals.totalRAM,
+          required: (req as PlayerRequirement & { hacknetRAM: number }).hacknetRAM,
+        },
+        hacknetCores: {
+          current: totals.totalCores,
+          required: (req as PlayerRequirement & { hacknetCores: number }).hacknetCores,
+        },
+      };
+      const { current, required } = statMap[req.type];
+      if (current < required) {
+        unmetRequirements.push(req);
+      }
+    }
+
     if (req.type === 'backdoorInstalled') {
       const server = (await Do(ns, 'ns.getServer', req.server)) as Server;
       if (!server.backdoorInstalled) {
@@ -171,7 +230,33 @@ export async function getUnmetRequirements(
       }
     }
 
-    // TODO: handle someCondition
+    if (req.type === 'money') {
+      const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+      const required = (req as PlayerRequirement & { money: number }).money;
+      if (player.money < required) {
+        unmetRequirements.push(req);
+      }
+    }
+
+    if (req.type === 'city') {
+      const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+      const city = (req as PlayerRequirement & { city: string }).city;
+      if (player.city !== city) {
+        unmetRequirements.push(req);
+      }
+    }
+
+    if (req.type === 'skills') {
+      const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+      const skillReq = (req as PlayerRequirement & { skills: Record<string, number> }).skills;
+      const meetsAll = skillReq
+        ? Object.keys(skillReq).every((skill) => player.skills[skill] >= skillReq[skill])
+        : true;
+      if (!meetsAll) {
+        unmetRequirements.push(req);
+      }
+    }
+
     if (req.type === 'someCondition') {
       // NOTE: this solution could be improved by handling any type of someCondition that could be added in the future, but for now it's just handling the cases we know
       const conditionTypes = req.conditions.map((condition: PlayerRequirement) => condition.type);
@@ -279,27 +364,137 @@ export async function getUnmetRequirements(
   return unmetRequirements;
 }
 
-// TODO: LEFT OFF ON BUYING MY FIRST AUG AND WORKING WITH ALL REQS ON A FACTION
 async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Promise<void> {
-  // TODO: work on a way to fulfill all requirements that don't conflict with each other
   const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
-  const unmetRequirements = [...reqs];
-  const req = reqs[0];
 
-  if (req.type === 'backdoorInstalled') {
-    const server = (await Do(ns, 'ns.getServer', req.server)) as Server;
-    const requiredHacking = server.requiredHackingSkill ?? 0;
-    if (requiredHacking > player.skills.hacking) {
-      console.log("Player doesn't have enough hacking skill to install backdoor.");
-      // improve hacking skill through college
-    } else {
-      const backdoorInstalled = installBackdoor(ns, req.server as string);
-      if (backdoorInstalled !== null) {
-        ns.tprint(`Backdoor installed on ${req.server}`);
-        unmetRequirements.shift();
+  for (const req of reqs) {
+    if (req.type === 'backdoorInstalled') {
+      const server = (await Do(ns, 'ns.getServer', req.server)) as Server;
+      const requiredHacking = server.requiredHackingSkill ?? 0;
+      if (requiredHacking > player.skills.hacking) {
+        ns.tprint(`Can't backdoor ${req.server}: need ${requiredHacking} hacking (have ${player.skills.hacking}).`);
+      } else {
+        const result = await installBackdoor(ns, req.server as string);
+        if (result !== null) {
+          ns.tprint(`Backdoor installed on ${req.server}`);
+        }
       }
     }
+
+    if (req.type === 'city') {
+      const city = (req as PlayerRequirement & { city: string }).city;
+      if (player.city !== city) {
+        const traveled = await Do(ns, 'ns.singularity.travelToCity', city);
+        if (traveled) {
+          ns.tprint(`Traveled to ${city}`);
+        } else {
+          ns.tprint(`Failed to travel to ${city} (need $200k).`);
+        }
+      }
+    }
+
+    if (req.type === 'money') {
+      const required = (req as PlayerRequirement & { money: number }).money;
+      ns.tprint(`Need ${ns.formatNumber(required)} money (have ${ns.formatNumber(player.money)}).`);
+    }
+
+    if (req.type === 'skills') {
+      const skillReq = (req as PlayerRequirement & { skills: Record<string, number> }).skills;
+      if (skillReq) {
+        const deficits = Object.entries(skillReq)
+          .filter(([skill, required]) => player.skills[skill] < required)
+          .map(([skill, required]) => `${skill}: ${player.skills[skill]}/${required}`);
+        if (deficits.length > 0) {
+          ns.tprint(`Skills needed: ${deficits.join(', ')}`);
+        }
+      }
+    }
+
+    if (req.type === 'hacknetLevels' || req.type === 'hacknetRAM' || req.type === 'hacknetCores') {
+      await fulfillHacknetRequirement(ns, req);
+    }
+
+    const handledTypes = new Set([
+      'backdoorInstalled',
+      'money',
+      'city',
+      'skills',
+      'hacknetLevels',
+      'hacknetRAM',
+      'hacknetCores',
+    ]);
+    if (!handledTypes.has(req.type)) {
+      ns.tprint(`Unhandled requirement for ${req.type}: ${JSON.stringify(req)}`);
+    }
   }
+}
+
+async function fulfillHacknetRequirement(ns: NS, req: PlayerRequirement): Promise<void> {
+  const typeToStat: Record<string, { key: keyof HacknetTotals; upgradeFn: string; costFn: string }> = {
+    hacknetLevels: {
+      key: 'totalLevels',
+      upgradeFn: 'ns.hacknet.upgradeLevel',
+      costFn: 'ns.hacknet.getLevelUpgradeCost',
+    },
+    hacknetRAM: {
+      key: 'totalRAM',
+      upgradeFn: 'ns.hacknet.upgradeRam',
+      costFn: 'ns.hacknet.getRamUpgradeCost',
+    },
+    hacknetCores: {
+      key: 'totalCores',
+      upgradeFn: 'ns.hacknet.upgradeCore',
+      costFn: 'ns.hacknet.getCoreUpgradeCost',
+    },
+  };
+
+  const config = typeToStat[req.type];
+  if (!config) return;
+
+  const required = (req as PlayerRequirement & Record<string, number>)[req.type] as number;
+
+  let numNodes = (await Do(ns, 'ns.hacknet.numNodes')) as number;
+  if (numNodes === 0) {
+    const newIndex = (await Do(ns, 'ns.hacknet.purchaseNode')) as number;
+    if (newIndex === -1) {
+      ns.tprint(`Can't afford a hacknet node to meet ${req.type} >= ${required}.`);
+      return;
+    }
+    ns.tprint(`Purchased hacknet node #${newIndex}.`);
+    numNodes = 1;
+  }
+
+  let totals = await getHacknetTotals(ns);
+  while (totals[config.key] < required) {
+    let cheapestCost = Infinity;
+    let cheapestNode = -1;
+
+    for (let i = 0; i < numNodes; i++) {
+      const cost = (await Do(ns, config.costFn, i, 1)) as number;
+      if (cost < cheapestCost) {
+        cheapestCost = cost;
+        cheapestNode = i;
+      }
+    }
+
+    const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+    if (cheapestNode === -1 || cheapestCost > player.money) {
+      ns.tprint(
+        `Can't afford hacknet upgrade for ${req.type}: need ${ns.formatNumber(cheapestCost)} (have ${ns.formatNumber(player.money)}). Current: ${totals[config.key]}/${required}.`,
+      );
+      return;
+    }
+
+    const success = await Do(ns, config.upgradeFn, cheapestNode, 1);
+    if (!success) {
+      ns.tprint(`Failed to upgrade hacknet node #${cheapestNode} for ${req.type}.`);
+      return;
+    }
+
+    totals = await getHacknetTotals(ns);
+  }
+
+  ns.tprint(`Hacknet requirement met: ${req.type} = ${totals[config.key]}/${required}.`);
 }
 
 export async function takeActionToJoinFaction(
@@ -317,10 +512,11 @@ export async function takeActionToJoinFaction(
             faction.name,
           )) as PlayerRequirement[],
         };
-  const unmetRequirements = await getUnmetRequirements(ns, factionWithReqs);
+  let unmetRequirements = await getUnmetRequirements(ns, factionWithReqs);
 
   if (unmetRequirements.length > 0) {
     await fulfillUnmetRequirements(ns, unmetRequirements);
+    unmetRequirements = await getUnmetRequirements(ns, factionWithReqs);
   }
 
   if (unmetRequirements.length === 0) {

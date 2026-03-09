@@ -66,7 +66,7 @@ export async function main(ns: NS): Promise<void> {
       cycleCount++;
       const now = Date.now();
       if (now - lastOpenAllPortsTime >= openAllPortsIntervalMs) {
-        await ns.run('open-all-ports.js', 1, 'home');
+        ns.run('/helpers/open-all-ports.js', 1);
         lastOpenAllPortsTime = now;
       }
       if (!cachedServerNames || now - lastServerNamesTime >= serverNamesCacheMs) {
