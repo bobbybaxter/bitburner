@@ -1,6 +1,7 @@
 import { NS } from '@ns';
 import { getServerNames } from '/helpers/get-server-names.js';
 import { Queue } from '/helpers/Queue.js';
+import { Do } from './helpers/do';
 
 const FIVE_MINUTES = 5 * 60 * 1000;
 
@@ -54,24 +55,24 @@ export async function main(ns: NS): Promise<void> {
 
       try {
         for (const hop of path) {
-          ns.singularity.connect(hop);
+          await Do(ns, 'ns.singularity.connect', hop);
         }
-        await ns.singularity.installBackdoor();
-        ns.print(`SUCCESS: Backdoor installed on ${hostname}`);
+        await Do(ns, 'ns.singularity.installBackdoor');
+        ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`);
       } catch (e) {
-        ns.print(`WARN: Failed to backdoor ${hostname}: ${e}`);
+        ns.tprint(`WARN: Failed to backdoor ${hostname}: ${e}`);
         remaining++;
       }
 
-      ns.singularity.connect('home');
+      await Do(ns, 'ns.singularity.connect', 'home');
     }
 
     if (remaining === 0) {
-      ns.print('All servers backdoored. Exiting.');
+      ns.tprint('All servers backdoored. Exiting.');
       return;
     }
 
-    ns.print(`${remaining} servers remaining. Retrying in 5 minutes.`);
+    ns.tprint(`${remaining} servers remaining. Retrying in 5 minutes.`);
     await ns.sleep(FIVE_MINUTES);
   }
 }

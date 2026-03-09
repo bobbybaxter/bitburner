@@ -1,7 +1,7 @@
 import type { NS, Server } from '@ns';
-import * as config from '/hack3-helpers/config.js';
-import { execMulti } from '/hack3-helpers/exec-multi.js';
-import * as formu from '/hack3-helpers/formulas.js';
+import * as config from './config.js';
+import { execMulti } from './exec-multi.js';
+import * as formu from './formulas.js';
 
 export interface CalcResult {
   dps: number;

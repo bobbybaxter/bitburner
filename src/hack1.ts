@@ -1,6 +1,6 @@
 import { NS, Server } from '@ns';
 import { disableNoisyLogs, getAllServers } from '/helpers/index.js';
-import { setUpHost } from './hack1-helpers/set-up-host';
+import { setUpHost } from './helpers/hack1/set-up-host';
 
 /**
  * Hacks all servers with a hacking level less than the player's hacking level

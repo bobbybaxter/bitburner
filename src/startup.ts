@@ -6,7 +6,6 @@ import { Do } from '/helpers/do.js';
  * Requires 25.25 GB RAM
  */
 export async function main(ns: NS): Promise<void> {
-  //
   // disableNoisyLogs(ns);
 
   await ns.run('open-all-ports.js', 1); // 4.2GB RAM
@@ -21,7 +20,7 @@ export async function main(ns: NS): Promise<void> {
   await ns.run('backdoor.js', 1);
 
   while (!ns.hasTorRouter()) {
-    ns.singularity.purchaseTor();
+    await Do(ns, 'ns.singularity.purchaseTor');
     if (ns.hasTorRouter()) break;
     await ns.sleep(60_000);
   }

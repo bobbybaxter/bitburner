@@ -1,5 +1,5 @@
 import type { NS } from '@ns';
-import { endWithSlash, fileOrFolderExist, formatAbsolutePath, isFolder } from '/hack3-helpers/lib/files.js';
+import { endWithSlash, fileOrFolderExist, formatAbsolutePath, isFolder } from '../lib/files.js';
 
 export async function main(ns: NS): Promise<void> {
   // All paths have to be converted to absolute paths;

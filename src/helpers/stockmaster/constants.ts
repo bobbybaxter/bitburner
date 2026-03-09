@@ -1,0 +1,17 @@
+export const COMMISSION = 100000;
+export const WSE_ACCOUNT_COST = 200e6;
+export const TIX_API_COST = 5e9;
+export const FOUR_S_DATA_BASE_COST = 1e9;
+export const FOUR_S_API_BASE_COST = 25e9;
+export const TOTAL_STOCKS = 33;
+export const MAX_INVERSION_THRESHOLD_CAP = 14;
+export const MARKET_CYCLE_LENGTH = 75;
+export const MAX_TICK_HISTORY = 151;
+export const INVERSION_DETECTION_TOLERANCE = 0.1;
+export const INVERSION_LAG_TOLERANCE = 5;
+export const EXPECTED_TICK_TIME = 6000;
+export const CATCH_UP_TICK_TIME = 4000;
+export const SLEEP_INTERVAL = 1000;
+export const CYCLE_DECAY_INTERVAL = 20;
+export const CYCLE_DECAY_FLOOR = 6;
+export const LOG_DEDUP_MS = 5000;
