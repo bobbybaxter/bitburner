@@ -1,7 +1,7 @@
 import type { NS, Server } from '@ns';
-import Allocator from '/hack3-helpers/allocator.js';
-import * as config from '/hack3-helpers/config.js';
-import * as formu from '/hack3-helpers/formulas.js';
+import Allocator from './allocator.js';
+import * as config from './config.js';
+import * as formu from './formulas.js';
 
 interface CalDpsResult {
   dps: number;

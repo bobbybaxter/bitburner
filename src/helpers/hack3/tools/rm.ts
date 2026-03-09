@@ -1,6 +1,6 @@
 import type { NS } from '@ns';
-import { withFlag } from '/hack3-helpers/lib/arguments.js';
-import { endWithSlash, fileOrFolderExist, formatAbsolutePath, isFolder } from '/hack3-helpers/lib/files.js';
+import { withFlag } from '../lib/arguments.js';
+import { endWithSlash, fileOrFolderExist, formatAbsolutePath, isFolder } from '../lib/files.js';
 
 export async function main(ns: NS): Promise<void> {
   let argument = ns.args as (string | number | boolean)[];

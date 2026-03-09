@@ -1,6 +1,6 @@
 import type { NS } from '@ns';
-import * as config from '/hack3-helpers/config.js';
-import { execMulti } from '/hack3-helpers/exec-multi.js';
+import * as config from './config.js';
+import { execMulti } from './exec-multi.js';
 
 const autoGrowScript = config.autoGrowScriptGet();
 

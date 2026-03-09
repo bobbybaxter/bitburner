@@ -11,8 +11,8 @@ import { Queue } from '/helpers/Queue.js';
 import * as shareLoop from '/helpers/share-loop.js';
 import { solveContract } from '/helpers/solve-contract.js';
 import { Stack } from '/helpers/Stack.js';
-import * as stockmasterHelpers from '/helpers/stockmaster-helpers.js';
 import * as target from '/helpers/target.js';
+import * as stockmasterHelpers from './stockmaster/index.js';
 
 export {
   cloneDeep,

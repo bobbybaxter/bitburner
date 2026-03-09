@@ -1,7 +1,7 @@
 import type { NS } from '@ns';
 import { disableNoisyLogs, findBestServer, getServerNames } from '/helpers/index.js';
-import type { HostServer } from './hack2-helpers/get-host-servers.js';
-import { findBestConfig, getHostServers, getTotalAvailableThreads } from './hack2-helpers/index.js';
+import type { HostServer } from './helpers/hack2/get-host-servers.js';
+import { findBestConfig, getHostServers, getTotalAvailableThreads } from './helpers/hack2/index.js';
 
 const RAM_PER_THREAD_HACK = 1.7;
 const RAM_PER_THREAD_GROW = 1.75;

@@ -1,7 +1,7 @@
 import type { NS, ScriptArg } from '@ns';
-import { replaceArgs } from '/hack3-helpers/lib/arguments.js';
-import { getMaxThreads } from '/hack3-helpers/lib/calculations.js';
-import { expandPath } from '/hack3-helpers/lib/files.js';
+import { replaceArgs } from './lib/arguments.js';
+import { getMaxThreads } from './lib/calculations.js';
+import { expandPath } from './lib/files.js';
 
 export function main(ns: NS): void {
   ns.tprint('\n');
