@@ -1,4 +1,5 @@
 import type { NS } from '@ns';
+import { Stack } from '/helpers/Stack.js';
 
 export type ServerScanResult = {
   hostname: string;
@@ -7,20 +8,21 @@ export type ServerScanResult = {
 };
 
 /**
- * Returns all reachable servers via BFS from home, with hostname, name, and depth.
+ * Returns all reachable servers via DFS from home, with hostname, name, and depth.
  */
 export function getServerNames(ns: NS): ServerScanResult[] {
   const result: ServerScanResult[] = [];
   const visited: Record<string, number> = { home: 1 };
-  const queue = Object.keys(visited);
-  while (queue.length > 0) {
-    const current = queue.pop()!;
+  const stack = new Stack<string>();
+  stack.push('home');
+  while (!stack.isEmpty()) {
+    const current = stack.pop()!;
     result.push({ hostname: current, name: current, depth: visited[current] });
     ns.scan(current)
       .reverse()
       .filter((e) => !visited[e])
       .forEach((server) => {
-        queue.push(server);
+        stack.push(server);
         visited[server] = visited[current] + 1;
       });
   }

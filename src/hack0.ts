@@ -1,4 +1,5 @@
 import { NS } from '@ns';
+import { Stack } from '/helpers/Stack.js';
 
 const HACK_SCRIPT_PATH = '/hack1-helpers/hack1-script.js';
 const HACK_SCRIPT_RAM = 2.4;
@@ -62,15 +63,16 @@ export async function main(ns: NS): Promise<void> {
 function scanServers(ns: NS): string[] {
   const out: string[] = [];
   const seen: Record<string, boolean> = {};
-  const queue = ['home'];
+  const stack = new Stack<string>();
+  stack.push('home');
 
-  while (queue.length > 0) {
-    const name = queue.pop()!;
+  while (!stack.isEmpty()) {
+    const name = stack.pop()!;
     if (seen[name]) continue;
     seen[name] = true;
     out.push(name);
     for (const next of ns.scan(name)) {
-      if (!seen[next]) queue.push(next);
+      if (!seen[next]) stack.push(next);
     }
   }
   return out;
