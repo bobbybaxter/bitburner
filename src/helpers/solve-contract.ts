@@ -733,18 +733,21 @@ function shortestPathInGrid(ns: NS, data: number[][]) {
   const dstY = height - 1;
   const dstX = width - 1;
 
+  if (data[0][0] === 1 || data[dstY][dstX] === 1) return '';
+
   const distance = new Array(height);
+  const prev: ([number, number] | null)[][] = new Array(height);
   const queue = new MinHeap();
 
   for (let y = 0; y < height; y++) {
     distance[y] = new Array(width).fill(Infinity);
+    prev[y] = new Array(width).fill(null);
   }
 
   function validPosition(y: number, x: number): boolean {
     return y >= 0 && y < height && x >= 0 && x < width && data[y][x] == 0;
   }
 
-  // List in-bounds and passable neighbors
   function* neighbors(y: number, x: number): Generator<[number, number]> {
     if (validPosition(y - 1, x)) yield [y - 1, x]; // Up
     if (validPosition(y + 1, x)) yield [y + 1, x]; // Down
@@ -752,33 +755,43 @@ function shortestPathInGrid(ns: NS, data: number[][]) {
     if (validPosition(y, x + 1)) yield [y, x + 1]; // Right
   }
 
-  // Prepare starting point
   distance[0][0] = 0;
   queue.push([0, 0], 0);
 
-  // Take next-nearest position and expand potential paths from there
   while (queue.size > 0) {
     const pos = queue.pop() as [number, number];
     const [y, x] = pos;
+    if (y === dstY && x === dstX) break;
     for (const [yN, xN] of neighbors(y, x)) {
       const d = distance[y][x] + 1;
       if (d < distance[yN][xN]) {
-        if (distance[yN][xN] == Infinity)
-          // Not reached previously
-          queue.push([yN, xN], d);
-        // Found a shorter path
+        if (distance[yN][xN] == Infinity) queue.push([yN, xN], d);
         else queue.changeWeight((e) => (e as [number, number])[0] === yN && (e as [number, number])[1] === xN, d);
-        //prev[yN][xN] = [y, x];
+        prev[yN][xN] = [y, x];
         distance[yN][xN] = d;
       }
     }
   }
 
-  // No path at all?
   if (distance[dstY][dstX] == Infinity) return '';
 
-  // Path was valid, finally verify that the answer path brought us to the end coordinates
-  return distance[dstY][dstX];
+  const dirMap: Record<string, string> = {
+    '-1,0': 'U',
+    '1,0': 'D',
+    '0,-1': 'L',
+    '0,1': 'R',
+  };
+  const path: string[] = [];
+  let cur: [number, number] | null = [dstY, dstX];
+  while (cur && (cur[0] !== 0 || cur[1] !== 0)) {
+    const p = prev[cur[0]][cur[1]] as [number, number];
+    const dy = cur[0] - p[0];
+    const dx = cur[1] - p[1];
+    path.push(dirMap[`${dy},${dx}`]);
+    cur = p;
+  }
+  path.reverse();
+  return path.join('');
 }
 
 function sanitizeParentheses(ns: NS, data: string): string[] {

@@ -41,9 +41,9 @@ export async function Do(ns: NS, command: string, ...args: unknown[]): Promise<u
   writeIfNotSame(
     ns,
     progname + '.js',
-    `export async function main(ns) { ns.writePort(ns.pid, JSON.stringify(` +
+    `export async function main(ns) { ns.writePort(ns.pid, JSON.stringify((await ` +
       command +
-      `(...JSON.parse(ns.args[0])) ?? "UnDeFiNeDaF"), 'w'); }`,
+      `(...JSON.parse(ns.args[0]))) ?? "UnDeFiNeDaF"), 'w'); }`,
   );
   let pid = ns.run(progname + '.js', 1, JSON.stringify(args));
   let z = -1;

@@ -17,14 +17,15 @@ export function installBackdoor(ns: NS, serverName: string): number | null {
 
     ns.write(
       fileName,
-      `export async function main(ns) {
+      `import { Do } from '/helpers/do.js';
+			export async function main(ns) {
 				const connections = ${JSON.stringify(connections)};
 				for (const connection of connections) {
 					await Do(ns, 'ns.singularity.connect', connection);
 				}
 				await Do(ns, 'ns.singularity.installBackdoor');
 				ns.toast(\`Backdoor installed on ${serverName}!\`);
-				ns.singularity.connect('home');
+				await Do(ns, 'ns.singularity.connect', 'home');
 			}`,
       'w',
     );

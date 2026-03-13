@@ -268,7 +268,7 @@ export const launchSummaryTail = async (ns: NS): Promise<void> => {
     return;
   await runCommand(
     ns,
-    `ns.disableLog('sleep'); ns.tail(); let lastRead = '';
+    `ns.disableLog('sleep'); ns.ui.openTail(); let lastRead = '';
       while (true) {
           let read = ns.read('${summaryFile}');
           if (lastRead != read) ns.print(lastRead = read);

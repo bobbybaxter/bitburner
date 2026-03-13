@@ -35,8 +35,8 @@ interface TargetServerWithBatches {
 
 const scriptBaseCost = 1.75;
 const batchStepMs = 500;
-const homeRamReserveGb = 60;
-const homeRamPercentReserve = 0.1;
+const homeRamReserveGb = 300;
+const homeRamPercentReserve = 0.25;
 const prepSecurityEpsilon = 0.001;
 const prepMoneyFraction = 0.99;
 const maxHackFractionCap = 0.9;
@@ -66,7 +66,7 @@ export async function main(ns: NS): Promise<void> {
       cycleCount++;
       const now = Date.now();
       if (now - lastOpenAllPortsTime >= openAllPortsIntervalMs) {
-        await ns.run('open-all-ports.js', 1, 'home');
+        ns.run('/helpers/open-all-ports.js', 1);
         lastOpenAllPortsTime = now;
       }
       if (!cachedServerNames || now - lastServerNamesTime >= serverNamesCacheMs) {
@@ -614,7 +614,14 @@ function findOptimalHackFraction(
 
 function findFallbackHost(ns: NS, hostnames: string[], failedHost: string, threads: number): string | null {
   const ramNeeded = threads * scriptBaseCost;
-  for (const host of hostnames) {
+  // Merge planned hosts with current purchased servers — pserv-opt may have
+  // added replacements that weren't in the original snapshot.
+  const candidates = new Set(hostnames);
+  for (const ps of ns.getPurchasedServers()) {
+    if (ps !== 'pserv-share') candidates.add(ps);
+  }
+  candidates.add('home');
+  for (const host of candidates) {
     if (host === failedHost) continue;
     try {
       const maxRam = ns.getServerMaxRam(host);
@@ -645,6 +652,7 @@ async function schedule({
   hostnames: string[];
 }): Promise<void> {
   let execCount = 0;
+  let abortedBatches = 0;
   const baseTime = Date.now();
 
   // Iterate through each target server
@@ -699,7 +707,15 @@ async function schedule({
       for (const params of execParams) {
         const { script, target, threads, waitTime } = params;
         let host = params.host;
-        let pid = ns.exec(script, host, threads, target, threads, waitTime);
+        let pid = 0;
+
+        // Guard against servers deleted mid-cycle (e.g. pserv-opt upgrading)
+        try {
+          ns.getServerMaxRam(host);
+          pid = ns.exec(script, host, threads, target, threads, waitTime);
+        } catch {
+          // Server no longer exists — fall straight through to fallback
+        }
 
         if (pid === 0) {
           const fallback = findFallbackHost(ns, hostnames, host, threads);
@@ -713,8 +729,9 @@ async function schedule({
         }
 
         if (pid === 0) {
-          ns.tprint(
-            `WARN: batch for ${target} aborted — ${params.host} unavailable, no fallback with ${threads} threads free`,
+          abortedBatches++;
+          ns.print(
+            `WARN: batch for ${target} aborted — ${params.host} unavailable, no fallback with ${threads} threads`,
           );
           for (const p of launchedPids) ns.kill(p);
           batchAborted = true;
@@ -731,5 +748,8 @@ async function schedule({
       if (batchAborted) continue;
       previousTaskEndTime = taskEndTime;
     }
+  }
+  if (abortedBatches > 0) {
+    ns.print(`WARN: ${abortedBatches} batch(es) aborted — no host capacity (see script log for details)`);
   }
 }

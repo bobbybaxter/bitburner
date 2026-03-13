@@ -24,7 +24,7 @@ function getPath(ns: NS, target: string): string[] | null {
 }
 
 export async function main(ns: NS): Promise<void> {
-  ns.disableLog('ALL');
+  // ns.disableLog('ALL');
 
   while (true) {
     const servers = getServerNames(ns)
@@ -39,10 +39,12 @@ export async function main(ns: NS): Promise<void> {
 
       if (server.backdoorInstalled) continue;
       if (!server.hasAdminRights) {
+        ns.print(`SKIP ${hostname}: no root access`);
         remaining++;
         continue;
       }
       if ((server.requiredHackingSkill ?? Infinity) > hackLevel) {
+        ns.print(`SKIP ${hostname}: need hack ${server.requiredHackingSkill}, have ${hackLevel}`);
         remaining++;
         continue;
       }
@@ -57,12 +59,14 @@ export async function main(ns: NS): Promise<void> {
         for (const hop of path) {
           await Do(ns, 'ns.singularity.connect', hop);
         }
-        await Do(ns, 'ns.singularity.installBackdoor');
-        ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`);
+        Do(ns, 'ns.singularity.installBackdoor').then(
+          () => ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`),
+          (e) => ns.tprint(`WARN: Backdoor failed on ${hostname}: ${e}`),
+        );
       } catch (e) {
-        ns.tprint(`WARN: Failed to backdoor ${hostname}: ${e}`);
-        remaining++;
+        ns.tprint(`WARN: Failed to navigate to ${hostname}: ${e}`);
       }
+      remaining++;
 
       await Do(ns, 'ns.singularity.connect', 'home');
     }

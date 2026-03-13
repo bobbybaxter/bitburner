@@ -68,7 +68,7 @@ export async function main(ns: NS): Promise<void> {
   if (flags.begin) {
     await graftAugs(ns, domains);
   } else {
-    ns.tail();
+    ns.ui.openTail();
   }
 }
 
