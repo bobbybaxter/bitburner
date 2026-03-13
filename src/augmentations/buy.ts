@@ -12,7 +12,7 @@ run /augmentations/buy.js [ hacking | charisma | combat | crime | faction | hack
 
 import type { NS } from '@ns';
 import type { AugmentationInfo } from 'augmentations/info.js';
-import { averageValue, DOMAINS, getAllAugmentations } from 'augmentations/info.js';
+import { averageValue, DOMAINS, getAllAugmentations, getAugmentationInfo } from 'augmentations/info.js';
 import { Do } from 'helpers/do.js';
 
 const FLAGS: [string, string | number | boolean | string[]][] = [
@@ -64,9 +64,10 @@ export async function main(ns: NS): Promise<void> {
   for (const aug of augPlan) {
     const augValue = averageValue(aug as { value?: Record<string, number> }, domains);
     const value = augValue.toFixed(2);
-    summary.push(`  '${aug.name}' (${value}x) from ${aug.canPurchaseFrom} for ${ns.formatNumber(aug.price ?? 0)}`);
+    const factionName = typeof aug.canPurchaseFrom === 'string' ? aug.canPurchaseFrom : aug.canPurchaseFrom?.name;
+    summary.push(`  '${aug.name}' (${value}x) from ${factionName} for ${ns.formatNumber(aug.price ?? 0)}`);
   }
-  ns.print(summary.join('\n'), '\n');
+  ns.tprint(summary.join('\n'), '\n');
 
   if (flags.begin) {
     await buyAugs(ns, domains);
@@ -77,37 +78,63 @@ export async function main(ns: NS): Promise<void> {
 
 export async function buyAugs(ns: NS, domains: string[]): Promise<void> {
   const plannedAugs: Record<string, boolean> = {};
-  let selectedAugs = await selectAugs(ns, domains, plannedAugs);
+  let selectedAugs = (await selectAugs(ns, domains, plannedAugs)).filter((a) => a.name !== 'NeuroFlux Governor');
   while (selectedAugs.length > 0) {
     const aug = selectedAugs.shift()!;
     plannedAugs[aug.name] = true;
     const factionName = typeof aug.canPurchaseFrom === 'string' ? aug.canPurchaseFrom : aug.canPurchaseFrom?.name;
     const price = aug.price ?? 0;
-    if (factionName && price < ns.getPlayer().money) {
-      ns.singularity.purchaseAugmentation(factionName, aug.name);
-      ns.tprint(`Purchased '${aug.name}' from ${factionName} for ${ns.formatNumber(price)}`);
+    if (factionName && price <= ns.getPlayer().money) {
+      const success = (await Do(ns, 'ns.singularity.purchaseAugmentation', factionName, aug.name)) as boolean;
+      if (success) {
+        ns.tprint(`Purchased '${aug.name}' from ${factionName} for ${ns.formatNumber(price)}`);
+      } else {
+        ns.print(`WARN: Failed to purchase '${aug.name}' from ${factionName} (API returned false)`);
+      }
+    } else if (!factionName) {
+      ns.print(`WARN: Skipped '${aug.name}' — no valid faction to purchase from`);
+    } else {
+      ns.print(
+        `WARN: Skipped '${aug.name}' — costs ${ns.formatNumber(price)} but only have ${ns.formatNumber(ns.getPlayer().money)}`,
+      );
     }
-    selectedAugs = await selectAugs(ns, domains, plannedAugs);
-    const neuroFluxPrice = (await Do(ns, 'ns.singularity.getAugmentationPrice', 'NeuroFlux Governor')) as number;
-    if (neuroFluxPrice < ns.getPlayer().money) {
-      delete plannedAugs['NeuroFlux Governor'];
-    }
+    selectedAugs = (await selectAugs(ns, domains, plannedAugs)).filter((a) => a.name !== 'NeuroFlux Governor');
     while (selectedAugs.length > 0 && selectedAugs[0].name in plannedAugs) {
       selectedAugs.shift();
     }
     await ns.sleep(100);
   }
-  // ns.tprint(
-  //   [
-  //     "Finished buying augmentations. Don't forget:",
-  //     '  - Buy augmentations for sleeves',
-  //     '  - Buy equipment for gang members',
-  //     '  - Upgrade home server',
-  //     '  - Spend hacknet hashes on Bladeburner rank and SP',
-  //     '  - Spend hacknet hashes on corporation research and funds',
-  //     '  - Buyback corporation shares',
-  //   ].join('\n'),
-  // );
+}
+
+export async function buyNfgAndInstall(ns: NS): Promise<void> {
+  ns.tprint('Liquidating stocks...');
+  ns.run('stockmaster.js', 1, '-l');
+  await ns.sleep(10_000);
+
+  ns.tprint('Buying NeuroFlux Governors...');
+  let nfgBought = 0;
+  while (true) {
+    const nfgInfo = await getAugmentationInfo(ns, 'NeuroFlux Governor');
+    const nfgPrice = nfgInfo.price ?? 0;
+    if (nfgPrice > ns.getPlayer().money) break;
+
+    const faction = await canPurchaseFrom(ns, nfgInfo);
+    const factionName = typeof faction === 'string' ? faction : faction?.name;
+    if (!factionName) break;
+
+    const success = (await Do(ns, 'ns.singularity.purchaseAugmentation', factionName, 'NeuroFlux Governor')) as boolean;
+    if (success) {
+      nfgBought++;
+      ns.tprint(`Purchased NeuroFlux Governor #${nfgBought} from ${factionName} for ${ns.formatNumber(nfgPrice)}`);
+    } else {
+      break;
+    }
+    await ns.sleep(100);
+  }
+  ns.tprint(`Bought ${nfgBought} NeuroFlux Governors total.`);
+
+  ns.tprint('Installing augmentations and resetting...');
+  await Do(ns, 'ns.singularity.installAugmentations', 'startup.js');
 }
 
 export async function planAugs(

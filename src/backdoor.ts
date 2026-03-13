@@ -59,12 +59,14 @@ export async function main(ns: NS): Promise<void> {
         for (const hop of path) {
           await Do(ns, 'ns.singularity.connect', hop);
         }
-        await Do(ns, 'ns.singularity.installBackdoor');
-        ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`);
+        Do(ns, 'ns.singularity.installBackdoor').then(
+          () => ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`),
+          (e) => ns.tprint(`WARN: Backdoor failed on ${hostname}: ${e}`),
+        );
       } catch (e) {
-        ns.tprint(`WARN: Failed to backdoor ${hostname}: ${e}`);
-        remaining++;
+        ns.tprint(`WARN: Failed to navigate to ${hostname}: ${e}`);
       }
+      remaining++;
 
       await Do(ns, 'ns.singularity.connect', 'home');
     }

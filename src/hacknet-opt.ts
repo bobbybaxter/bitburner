@@ -251,17 +251,17 @@ export async function main(ns: NS): Promise<void> {
           (bestUpgrade.type === null ||
             (useROI ? getNewNodeROI(ns, purchaseNodeCost) >= bestUpgrade.roi : purchaseNodeCost <= upgradeCost));
         if (nextIsNewNode) {
-          ns.tprint(`Next planned: new node for $${ns.formatNumber(purchaseNodeCost)}`);
+          ns.print(`Next planned: new node for $${ns.formatNumber(purchaseNodeCost)}`);
         } else if (bestUpgrade.type !== null && bestUpgrade.nodeIndex !== null) {
           const nextLevelLabel =
             bestUpgrade.type === 'level' ? `level +${bestUpgrade.levelAmount ?? numLevels}` : bestUpgrade.type;
-          ns.tprint(
+          ns.print(
             `Next planned: node ${bestUpgrade.nodeIndex} ${nextLevelLabel} upgrade for $${ns.formatNumber(upgradeCost)}`,
           );
         } else {
-          ns.tprint(`Next planned: new node for $${ns.formatNumber(purchaseNodeCost)}`);
+          ns.print(`Next planned: new node for $${ns.formatNumber(purchaseNodeCost)}`);
         }
-        ns.tprint(
+        ns.print(
           `  (spending budget: $${ns.formatNumber(spendingMax)}, earned $${ns.formatNumber(hacknetMoneyEarned)}, spent $${ns.formatNumber(spent)})`,
         );
       }
