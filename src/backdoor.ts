@@ -2,8 +2,9 @@ import { NS } from '@ns';
 import { getServerNames } from '/helpers/get-server-names.js';
 import { Queue } from '/helpers/Queue.js';
 import { Do } from './helpers/do';
+import { openPorts } from './helpers/open-ports.js';
 
-const FIVE_MINUTES = 5 * 60 * 1000;
+const FIVE_MINUTES = 1 * 60 * 1000;
 
 function getPath(ns: NS, target: string): string[] | null {
   const paths: Record<string, string[]> = { home: [] };
@@ -35,9 +36,18 @@ export async function main(ns: NS): Promise<void> {
     let remaining = 0;
 
     for (const hostname of servers) {
-      const server = ns.getServer(hostname);
+      let server = ns.getServer(hostname);
 
       if (server.backdoorInstalled) continue;
+      if (!server.hasAdminRights) {
+        openPorts(ns, server);
+        try {
+          ns.nuke(hostname);
+        } catch (e) {
+          ns.print(`nuke failed on ${hostname}: ${e}`);
+        }
+        server = ns.getServer(hostname);
+      }
       if (!server.hasAdminRights) {
         ns.print(`SKIP ${hostname}: no root access`);
         remaining++;
@@ -76,7 +86,7 @@ export async function main(ns: NS): Promise<void> {
       return;
     }
 
-    ns.tprint(`${remaining} servers remaining. Retrying in 5 minutes.`);
+    ns.tprint(`${remaining} servers remaining. Retrying in 1 minute.`);
     await ns.sleep(FIVE_MINUTES);
   }
 }

@@ -34,28 +34,26 @@ interface TargetServerWithBatches {
 }
 
 const scriptBaseCost = 1.75;
-const batchStepMs = 500;
+const batchStepMs = 100;
 const homeRamReserveGb = 300;
 const homeRamPercentReserve = 0.25;
 const prepSecurityEpsilon = 0.001;
 const prepMoneyFraction = 0.99;
-const maxHackFractionCap = 0.9;
+const maxHackFractionCap = 0.95;
 const prepThreadBudgetFraction = 0.5;
-const openAllPortsIntervalMs = 30_000;
 const serverNamesCacheMs = 60_000;
 
-const maxTargetsToHack = 10;
+const maxTargetsToHack = 15;
 const maxTotalRunningScripts = 50_000;
 const maxBatchesPerTargetPerRun = 25;
 const minThreadsPerExec = 4;
 
-const execChunkSize = 10;
+const execChunkSize = 20;
 const execChunkDelayMs = 15;
-const targetStaggerMs = 500;
+const targetStaggerMs = 100;
 
 export async function main(ns: NS): Promise<void> {
   disableNoisyLogs(ns);
-  let lastOpenAllPortsTime = 0;
   let cachedServerNames: ReturnType<typeof getServerNames> | null = null;
   let lastServerNamesTime = 0;
 
@@ -65,10 +63,6 @@ export async function main(ns: NS): Promise<void> {
       await ns.sleep(0);
       cycleCount++;
       const now = Date.now();
-      if (now - lastOpenAllPortsTime >= openAllPortsIntervalMs) {
-        ns.run('/helpers/open-all-ports.js', 1);
-        lastOpenAllPortsTime = now;
-      }
       if (!cachedServerNames || now - lastServerNamesTime >= serverNamesCacheMs) {
         cachedServerNames = getServerNames(ns);
         lastServerNamesTime = now;
@@ -155,8 +149,9 @@ export async function main(ns: NS): Promise<void> {
         });
 
       if (targetServers.length === 0) {
-        ns.print(`cycle ${cycleCount}: no targets to hack, sleeping for 1 minute`);
-        await ns.sleep(1000 * 60);
+        const sleepMs = 1000 * 60;
+        ns.print(`cycle ${cycleCount}: no targets to hack, sleeping for ${sleepMs}ms`);
+        await ns.sleep(sleepMs);
         continue;
       }
 
@@ -199,12 +194,22 @@ export async function main(ns: NS): Promise<void> {
       const prepBatches = batchesToSchedule - hackBatches;
       ns.print(`cycle ${cycleCount}: ${prepBatches} prep + ${hackBatches} hack batches`);
       if (batchesToSchedule === 0) {
-        ns.print(`cycle ${cycleCount}: no batches to schedule, sleeping for 1 second`);
-        await ns.sleep(1000);
+        const sleepMs = 1000 * 60;
+        ns.print(`cycle ${cycleCount}: no batches to schedule, sleeping for ${sleepMs}ms`);
+        await ns.sleep(sleepMs);
       } else {
         await schedule({ ns, targetServers: finalTargetServers, hostnames: hostServers.map((h) => h.hostname) });
         const scriptsSpawned = batchesToSchedule * 4;
-        const sleepMs = scriptsSpawned > 5000 ? 2000 : scriptsSpawned > 2000 ? 1000 : scriptsSpawned > 500 ? 500 : 100;
+        let sleepMs = 100;
+
+        if (scriptsSpawned > 5000) {
+          sleepMs = 2000;
+        } else if (scriptsSpawned > 2000) {
+          sleepMs = 1000;
+        } else if (scriptsSpawned > batchStepMs) {
+          sleepMs = batchStepMs;
+        }
+
         ns.print(`cycle ${cycleCount}: sleeping for ${sleepMs}ms`);
         await ns.sleep(sleepMs);
       }
@@ -233,8 +238,9 @@ async function chooseTargets({
   let finalHostServerThreads = finalHostServers.reduce((acc, server) => acc + server.availableThreads, 0);
 
   if (finalHostServerThreads < 2) {
-    ns.print(`chooseTargets: no threads left to use, sleeping for 1 second`);
-    await ns.sleep(1000);
+    const sleepMs = 1000;
+    ns.print(`chooseTargets: no threads left to use, sleeping for ${sleepMs}ms`);
+    await ns.sleep(sleepMs);
   }
 
   // Sort targets by profitability so best targets get prepped first
@@ -602,7 +608,7 @@ function findOptimalHackFraction(
   if (numTargets <= 0 || maxBatch <= 0 || totalThreads <= 0) return 0.01;
   const budget = totalThreads / (maxBatch * numTargets);
   let low = 0.01;
-  let high = Math.min(0.9, maxHackFractionCap);
+  let high = Math.min(0.95, maxHackFractionCap);
   for (let i = 0; i < 20; i++) {
     const mid = (low + high) / 2;
     const threads = computeThreadsPerBatch(ns, referenceTarget, mid);

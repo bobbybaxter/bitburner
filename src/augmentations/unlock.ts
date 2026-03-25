@@ -3,10 +3,10 @@
 /augmentations/unlock.js (39.1 / / 34.1 GB)
 
 List augmentations that can be unlocked soon, sorted by least reputation required.
-Optionally work to unlock them.
+Optionally work to unlock them. Use --cheap to prioritize cheapest augs first.
 
 Usage:
-run /augmentations/unlock.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ] [ --begin ]
+run /augmentations/unlock.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ] [ --begin ] [ --cheap ]
 
 */
 
@@ -46,6 +46,7 @@ type GangInfo = { faction: string };
 const FLAGS: [string, string | number | boolean | string[]][] = [
   ['help', false],
   ['begin', false],
+  ['cheap', false],
 ];
 
 export function autocomplete(
@@ -72,23 +73,26 @@ export async function main(ns: NS): Promise<void> {
         'List augmentations that can be unlocked soon, sorted by least reputation required. Optionally work to unlock them.',
         '',
         'Usage: ',
-        `> ${ns.getScriptName()} [ ${Object.keys(DOMAINS).join(' | ')} ... ] [ --begin ]`,
+        `> ${ns.getScriptName()} [ ${Object.keys(DOMAINS).join(' | ')} ... ] [ --begin ] [ --cheap ]`,
         '',
         'Example: List all augmentations that increase combat or crime stats.',
         `> run ${ns.getScriptName()} combat crime`,
         '',
         'Example: Work for all factions that will unlock hacking augmentations.',
         `> run ${ns.getScriptName()} hacking --begin`,
+        '',
+        'Example: Unlock the cheapest hacking augmentations first.',
+        `> run ${ns.getScriptName()} hacking --begin --cheap`,
         ' ',
       ].join('\n'),
     );
     return;
   }
 
-  const futureAugs = await getFutureAugs(ns, { domains });
+  const cheap = !!flags.cheap;
+  const futureAugs = await getFutureAugs(ns, { domains, cheap });
 
-  // REVIEW: may need to abstract this summary logic, so i can reuse it when an aug is purchased
-  const summary = [`Augmentation Unlocking Plan: ${domains?.join(', ') ?? 'all'}`];
+  const summary = [`Augmentation Unlocking Plan: ${domains?.join(', ') ?? 'all'}${cheap ? ' (cheapest first)' : ''}`];
   for (const aug of futureAugs) {
     const value = averageValue(aug as { value?: Record<string, number> }, domains).toFixed(2);
     if (aug.moneyOnly) {
@@ -104,16 +108,16 @@ export async function main(ns: NS): Promise<void> {
   ns.tprint(summary.join('\n'), '\n');
 
   if (flags.begin) {
-    await unlockAugs(ns, domains);
+    await unlockAugs(ns, domains, { cheap });
   } else {
     ns.ui.openTail();
   }
 }
 
-export async function unlockAugs(ns: NS, domains: string[]): Promise<void> {
+export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = {}): Promise<void> {
   for (let i = 0; i < 5; i++) {
     // TODO: may need to put some logic in here to prestige (apply augs) when a certain condition is met, like time passing since an aug was purchased
-    let allFutureAugs = await getFutureAugs(ns, { domains });
+    let allFutureAugs = await getFutureAugs(ns, { domains, cheap });
     for (const aug of allFutureAugs.filter((a) => a.moneyOnly)) {
       const factionName = purchaseFactionName(aug.canPurchaseFrom) ?? 'unknown';
       ns.tprint(
@@ -150,11 +154,11 @@ export async function unlockAugs(ns: NS, domains: string[]): Promise<void> {
       } else {
         console.log('WORKING');
       }
-      allFutureAugs = await getFutureAugs(ns, { domains });
+      allFutureAugs = await getFutureAugs(ns, { domains, cheap });
       futureAugs = allFutureAugs.filter((a) => !a.moneyOnly && a.workableFaction);
     }
 
-    const joinableAugs = (await getFutureAugs(ns, { domains })).filter((a) => !a.moneyOnly);
+    const joinableAugs = (await getFutureAugs(ns, { domains, cheap })).filter((a) => !a.moneyOnly);
     const nextAug = joinableAugs.find((a) => a.joinableFaction);
     if (!nextAug) break;
     const joinableFaction = nextAug.joinableFaction!;
@@ -829,7 +833,11 @@ function purchaseFactionName(canPurchaseFrom: unknown): string | undefined {
 
 export async function getFutureAugs(
   ns: NS,
-  { domains, requireWorkable = false }: { domains?: string[]; requireWorkable?: boolean } = {},
+  {
+    domains,
+    requireWorkable = false,
+    cheap = false,
+  }: { domains?: string[]; requireWorkable?: boolean; cheap?: boolean } = {},
 ): Promise<FutureAug[]> {
   const allAugs = Object.values(await getAllAugmentations(ns));
   const factionOrderMap: Record<string, number> = ALL_FACTIONS.reduce((map: Record<string, number>, faction, index) => {
@@ -895,6 +903,7 @@ export async function getFutureAugs(
       return aug;
     })
     .sort((a, b) => {
+      if (cheap) return (a.price ?? 0) - (b.price ?? 0);
       const aFaction = a.neededFactions[0]?.name ?? purchaseFactionName(a.canPurchaseFrom);
       const bFaction = b.neededFactions[0]?.name ?? purchaseFactionName(b.canPurchaseFrom);
       const orderDiff = (factionOrderMap[aFaction ?? ''] ?? 0) - (factionOrderMap[bFaction ?? ''] ?? 0);

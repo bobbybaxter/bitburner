@@ -19,12 +19,16 @@ export async function main(ns: NS): Promise<void> {
   if (!isRunning('pserv-opt.js')) await ns.run('pserv-opt.js', 1); // 8.5GB RAM
 
   const resetInfo = ns.getResetInfo();
-  // print the ownedSF Map as a string that looks like: SF1: 1, SF2: 2, SF3: 3, etc.
   const ownedSFString = [...resetInfo.ownedSF.entries()]
     .sort(([a], [b]) => a - b)
     .map(([k, v]) => `SF${k}: ${v}`)
     .join(', ');
   ns.tprint(`current node: ${resetInfo.currentNode} | ${ownedSFString}`);
+
+  const hasSF3OrBN3 = resetInfo.currentNode === 3 || resetInfo.ownedSF.has(3);
+  if (hasSF3OrBN3 && !isRunning('workaround.js')) {
+    await ns.run('workaround.js', 1, '--hud');
+  }
 
   const hasSF4 = resetInfo.ownedSF.has(4) || resetInfo.currentNode === 4;
   if (!hasSF4) return;

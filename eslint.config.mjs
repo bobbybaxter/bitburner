@@ -49,6 +49,28 @@ const eslintConfig = defineConfig([
       },
     },
   },
+  // Vendored Emscripten output: not authored for browser-only or strict unused/redeclare rules.
+  {
+    files: ['src/libs/Ceres.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.amd,
+      },
+    },
+    rules: {
+      'no-undef': 'off',
+      'no-global-assign': 'off',
+      'no-unused-vars': 'off',
+      'no-empty': 'off',
+      'no-redeclare': 'off',
+      'no-func-assign': 'off',
+      'no-useless-escape': 'off',
+      '@typescript-eslint/no-unused-expressions': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
   eslintConfigPrettier,
 ]);
 

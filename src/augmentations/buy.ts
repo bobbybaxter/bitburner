@@ -3,10 +3,10 @@
 /augmentations/buy.js (38.1 / / 35.6 GB)
 
 List augmentations that boost a given kind of stats, starting with the most expensive.
-Optionally buy them.
+Optionally buy them. Use --cheap to buy cheapest first instead.
 
 Usage:
-run /augmentations/buy.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ] [ --begin ]
+run /augmentations/buy.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ] [ --begin ] [ --cheap ]
 
 */
 
@@ -18,6 +18,7 @@ import { Do } from 'helpers/do.js';
 const FLAGS: [string, string | number | boolean | string[]][] = [
   ['help', false],
   ['begin', false],
+  ['cheap', false],
 ];
 
 export function autocomplete(
@@ -40,13 +41,16 @@ export async function main(ns: NS): Promise<void> {
         `List augmentations that boost a given kind of stats, starting with the most expensive. Optionally buy them.`,
         '',
         'Usage: ',
-        `${ns.getScriptName()} [ ${Object.keys(DOMAINS).join(' | ')} ... ] [ --begin ]`,
+        `${ns.getScriptName()} [ ${Object.keys(DOMAINS).join(' | ')} ... ] [ --begin ] [ --cheap ]`,
         '',
         `Example: List all augs that increase hacking stats or faction rep gain`,
         `> run ${ns.getScriptName()} hacking faction`,
         '',
         `Example: Buy all augs that increase hacking, including NeuroFlux Governor repeatedly`,
         `> run ${ns.getScriptName()} hacking --begin`,
+        '',
+        `Example: Buy the cheapest hacking augs first`,
+        `> run ${ns.getScriptName()} hacking --begin --cheap`,
         ' ',
       ].join('\n'),
     );
@@ -59,8 +63,9 @@ export async function main(ns: NS): Promise<void> {
     }
   }
 
-  const augPlan = await planAugs(ns, domains);
-  const summary = [`Augmentation Buying Plan: ${domains.join(', ')}`];
+  const cheap = !!flags.cheap;
+  const augPlan = await planAugs(ns, domains, { cheap });
+  const summary = [`Augmentation Buying Plan: ${domains.join(', ')}${cheap ? ' (cheapest first)' : ''}`];
   for (const aug of augPlan) {
     const augValue = averageValue(aug as { value?: Record<string, number> }, domains);
     const value = augValue.toFixed(2);
@@ -70,15 +75,17 @@ export async function main(ns: NS): Promise<void> {
   ns.tprint(summary.join('\n'), '\n');
 
   if (flags.begin) {
-    await buyAugs(ns, domains);
+    await buyAugs(ns, domains, { cheap });
   } else {
     ns.ui.openTail();
   }
 }
 
-export async function buyAugs(ns: NS, domains: string[]): Promise<void> {
+export async function buyAugs(ns: NS, domains: string[], { cheap = false } = {}): Promise<void> {
   const plannedAugs: Record<string, boolean> = {};
-  let selectedAugs = (await selectAugs(ns, domains, plannedAugs)).filter((a) => a.name !== 'NeuroFlux Governor');
+  let selectedAugs = (await selectAugs(ns, domains, plannedAugs, { cheap })).filter(
+    (a) => a.name !== 'NeuroFlux Governor',
+  );
   while (selectedAugs.length > 0) {
     const aug = selectedAugs.shift()!;
     plannedAugs[aug.name] = true;
@@ -98,7 +105,9 @@ export async function buyAugs(ns: NS, domains: string[]): Promise<void> {
         `WARN: Skipped '${aug.name}' — costs ${ns.formatNumber(price)} but only have ${ns.formatNumber(ns.getPlayer().money)}`,
       );
     }
-    selectedAugs = (await selectAugs(ns, domains, plannedAugs)).filter((a) => a.name !== 'NeuroFlux Governor');
+    selectedAugs = (await selectAugs(ns, domains, plannedAugs, { cheap })).filter(
+      (a) => a.name !== 'NeuroFlux Governor',
+    );
     while (selectedAugs.length > 0 && selectedAugs[0].name in plannedAugs) {
       selectedAugs.shift();
     }
@@ -140,6 +149,7 @@ export async function buyNfgAndInstall(ns: NS): Promise<void> {
 export async function planAugs(
   ns: NS,
   domains: string[],
+  { cheap = false } = {},
 ): Promise<
   Array<AugmentationInfo & { canPurchaseFrom?: string | { name: string }; price?: number; sortKey?: number }>
 > {
@@ -149,11 +159,11 @@ export async function planAugs(
     sortKey?: number;
   };
   const plannedAugs: Record<string, PlannedAug> = {};
-  let selectedAugs = await selectAugs(ns, domains, plannedAugs);
+  let selectedAugs = await selectAugs(ns, domains, plannedAugs, { cheap });
   while (selectedAugs.length > 0) {
     const aug = selectedAugs.shift()!;
     plannedAugs[aug.name] = aug;
-    selectedAugs = await selectAugs(ns, domains, plannedAugs);
+    selectedAugs = await selectAugs(ns, domains, plannedAugs, { cheap });
     while (selectedAugs.length > 0 && selectedAugs[0].name in plannedAugs) {
       selectedAugs.shift();
     }
@@ -165,6 +175,7 @@ export async function selectAugs(
   ns: NS,
   domains: string[],
   plannedAugs: Record<string, unknown> | Record<string, boolean>,
+  { cheap = false } = {},
 ): Promise<
   Array<
     AugmentationInfo & {
@@ -183,7 +194,7 @@ export async function selectAugs(
     exclude[aug] = true;
   }
   exclude['NeuroFlux Governor'] = false;
-  const knownAugs = await getKnownAugs(ns, plannedAugs);
+  const knownAugs = await getKnownAugs(ns, plannedAugs, { cheap });
   const buyableAugs = Object.values(knownAugs)
     .filter((aug) => {
       return (
@@ -193,7 +204,7 @@ export async function selectAugs(
       );
     })
     .sort((a, b) => {
-      return (b.sortKey ?? 0) - (a.sortKey ?? 0);
+      return cheap ? (a.sortKey ?? 0) - (b.sortKey ?? 0) : (b.sortKey ?? 0) - (a.sortKey ?? 0);
     });
   return buyableAugs;
 }
@@ -201,6 +212,7 @@ export async function selectAugs(
 export async function getKnownAugs(
   ns: NS,
   plannedAugs: Record<string, unknown>,
+  { cheap = false } = {},
 ): Promise<
   Record<
     string,
@@ -214,7 +226,6 @@ export async function getKnownAugs(
     string,
     AugmentationInfo & { canPurchaseFrom?: string | { name: string }; sortKey?: number }
   >;
-  // Fill in purchasing info
   for (const [, aug] of Object.entries(augs)) {
     const canPurchase = await canPurchaseFrom(ns, aug, plannedAugs);
     (aug as AugmentationInfo & { canPurchaseFrom?: string | { name: string } | null }).canPurchaseFrom =
@@ -224,16 +235,18 @@ export async function getKnownAugs(
       (aug as AugmentationInfo & { sortKey?: number }).sortKey = 1e3;
     }
   }
-  // Adjust sortKey of prerequisites if their successors could be bought immediately
-  for (const [, aug] of Object.entries(augs)) {
-    for (const prereq of aug.prereqs ?? []) {
-      const plan: Record<string, boolean> = {};
-      plan[prereq] = true;
-      const prereqAug = augs[prereq as keyof typeof augs];
-      if (prereqAug?.canPurchaseFrom && (await canPurchaseFrom(ns, aug, plan))) {
-        const newSortKey = (aug.sortKey ?? 0) + (prereqAug.sortKey ?? 0);
-        (aug as AugmentationInfo & { sortKey?: number }).sortKey = newSortKey;
-        prereqAug.sortKey = newSortKey + 1;
+  if (!cheap) {
+    // Adjust sortKey of prerequisites so they sort before their dependents (expensive-first)
+    for (const [, aug] of Object.entries(augs)) {
+      for (const prereq of aug.prereqs ?? []) {
+        const plan: Record<string, boolean> = {};
+        plan[prereq] = true;
+        const prereqAug = augs[prereq as keyof typeof augs];
+        if (prereqAug?.canPurchaseFrom && (await canPurchaseFrom(ns, aug, plan))) {
+          const newSortKey = (aug.sortKey ?? 0) + (prereqAug.sortKey ?? 0);
+          (aug as AugmentationInfo & { sortKey?: number }).sortKey = newSortKey;
+          prereqAug.sortKey = newSortKey + 1;
+        }
       }
     }
   }
