@@ -3,9 +3,9 @@
 /augmentations/graft.js (50.1 / / 43.1 GB)
 
 List the best augmentations available to graft.
-Optionally graft them.
+Optionally graft them. Use --cheap to graft cheapest first.
 
-run /augmentations/graft.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ] [ --begin ]
+run /augmentations/graft.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ] [ --begin ] [ --cheap ]
 
 */
 
@@ -16,6 +16,7 @@ import { Do } from 'helpers/do.js';
 const FLAGS: [string, string | number | boolean | string[]][] = [
   ['help', false],
   ['begin', false],
+  ['cheap', false],
 ];
 
 export function autocomplete(
@@ -42,21 +43,25 @@ export async function main(ns: NS): Promise<void> {
         'List the best augmentations available to graft, sorted by (multipliers / time). Optionally graft them.',
         '',
         'Usage: ',
-        `${ns.getScriptName()} [ ${Object.keys(DOMAINS).join(' | ')} ... ] [ --begin ]`,
+        `${ns.getScriptName()} [ ${Object.keys(DOMAINS).join(' | ')} ... ] [ --begin ] [ --cheap ]`,
         '',
         'Example: List all augmentations that increase charisma or faction rep gain.',
         `> run ${ns.getScriptName()} charisma faction`,
         '',
         'Example: Graft all augmentations that increase hacking stats.',
         `> run ${ns.getScriptName()} hacking --begin`,
+        '',
+        'Example: Graft the cheapest hacking augmentations first.',
+        `> run ${ns.getScriptName()} hacking --begin --cheap`,
         ' ',
       ].join('\n'),
     );
     return;
   }
 
-  const graftableAugs = await getGraftableAugs(ns, { domains });
-  const summary = [`Augmentation Grafting Plan: ${domains.join(', ')}`];
+  const cheap = !!flags.cheap;
+  const graftableAugs = await getGraftableAugs(ns, { domains, cheap });
+  const summary = [`Augmentation Grafting Plan: ${domains.join(', ')}${cheap ? ' (cheapest first)' : ''}`];
   for (const aug of graftableAugs) {
     const price = ns.sprintf('%10s', ns.formatNumber(aug.price));
     summary.push(
@@ -66,14 +71,14 @@ export async function main(ns: NS): Promise<void> {
   ns.print(summary.join('\n'), '\n');
 
   if (flags.begin) {
-    await graftAugs(ns, domains);
+    await graftAugs(ns, domains, { cheap });
   } else {
     ns.ui.openTail();
   }
 }
 
-export async function graftAugs(ns: NS, domains: string[]): Promise<void> {
-  let augs = await getGraftableAugs(ns, { domains, canAfford: true });
+export async function graftAugs(ns: NS, domains: string[], { cheap = false } = {}): Promise<void> {
+  let augs = await getGraftableAugs(ns, { domains, canAfford: true, cheap });
   while (augs.length > 0) {
     const aug = augs[0];
     const player = ns.getPlayer() as { city?: string; isWorking?: boolean; workType?: string };
@@ -100,14 +105,14 @@ export async function graftAugs(ns: NS, domains: string[]): Promise<void> {
       ns.print(`Failed to graft '${aug.name}'.`);
       await ns.sleep(1000);
     }
-    augs = await getGraftableAugs(ns, { domains, canAfford: true });
+    augs = await getGraftableAugs(ns, { domains, canAfford: true, cheap });
   }
   ns.tprint('Grafted all affordable net-positive augmentations.');
 }
 
 export async function getGraftableAugs(
   ns: NS,
-  { domains, canAfford }: { domains: string[]; canAfford?: boolean },
+  { domains, canAfford, cheap = false }: { domains: string[]; canAfford?: boolean; cheap?: boolean },
 ): Promise<
   Array<{
     name: string;
@@ -166,7 +171,11 @@ export async function getGraftableAugs(
       },
     );
   }
-  graftableAugs.sort((a, b) => b.sortKey - a.sortKey);
+  if (cheap) {
+    graftableAugs.sort((a, b) => a.price - b.price);
+  } else {
+    graftableAugs.sort((a, b) => b.sortKey - a.sortKey);
+  }
 
   if (canAfford) {
     graftableAugs = graftableAugs.filter(

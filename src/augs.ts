@@ -14,10 +14,19 @@ import type { NS } from '@ns';
 import { buyAugs, buyNfgAndInstall } from 'augmentations/buy.js';
 import { DOMAINS } from 'augmentations/info.js';
 import { getFutureAugs, unlockAugs } from 'augmentations/unlock.js';
+import { Do } from 'helpers/do.js';
+
+/** Purchased but not yet installed (since last install). */
+async function countPurchasedPendingInstall(ns: NS): Promise<number> {
+  const installed = new Set((await Do(ns, 'ns.singularity.getOwnedAugmentations', false)) as string[]);
+  const allOwned = (await Do(ns, 'ns.singularity.getOwnedAugmentations', true)) as string[];
+  return allOwned.filter((name) => !installed.has(name)).length;
+}
 
 const FLAGS: [string, string | number | boolean | string[]][] = [
   ['help', false],
   ['threshold', 10],
+  ['cheap', false],
 ];
 
 export function autocomplete(
@@ -53,6 +62,11 @@ export async function main(ns: NS): Promise<void> {
         '',
         'Example: Trigger endgame (NFG + reset) when cheapest remaining aug > 5x current money.',
         `> run ${ns.getScriptName()} all --threshold 5`,
+        '',
+        'Example: Buy the cheapest hacking augmentations first.',
+        `> run ${ns.getScriptName()} hacking --cheap`,
+        '  With --cheap, also resets when ≥10 augmentations are purchased pending install',
+        '  (in addition to the --threshold multiple on next aug price).',
         ' ',
       ].join('\n'),
     );
@@ -67,7 +81,6 @@ export async function main(ns: NS): Promise<void> {
   }
 
   ns.tprint(`Augmentation auto-pilot started for: ${domains.join(', ')}`);
-  ns.ui.openTail();
 
   let moneyOnlyLogged = false;
 
@@ -79,7 +92,16 @@ export async function main(ns: NS): Promise<void> {
       break;
     }
 
-    await buyAugs(ns, domains);
+    await buyAugs(ns, domains, { cheap: !!flags.cheap });
+
+    if (flags.cheap) {
+      const pendingInstall = await countPurchasedPendingInstall(ns);
+      if (pendingInstall >= 10) {
+        ns.tprint(`--cheap: ${pendingInstall} augmentations purchased pending install (≥10). Starting endgame...`);
+        await buyNfgAndInstall(ns);
+        break;
+      }
+    }
 
     const refreshedAugs = await getFutureAugs(ns, { domains });
     const hasRepWork = !refreshedAugs[0].moneyOnly;

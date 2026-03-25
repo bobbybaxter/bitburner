@@ -226,7 +226,7 @@ export async function main(ns: NS): Promise<void> {
     if (shouldBuyNode) {
       try {
         hacknet.purchaseNode();
-        ns.tprint(`HackNet node purchased for $${ns.formatNumber(purchaseNodeCost)}`);
+        ns.print(`HackNet node purchased for $${ns.formatNumber(purchaseNodeCost)}`);
         wasItemPurchased = true;
       } catch {
         // Purchase failed, will retry next iteration
@@ -236,7 +236,7 @@ export async function main(ns: NS): Promise<void> {
       const success = performUpgrade(hacknet, bestUpgrade.nodeIndex, bestUpgrade.type, levelAmt);
       if (success) {
         const levelLabel = bestUpgrade.type === 'level' ? `level +${levelAmt}` : bestUpgrade.type;
-        ns.tprint(`${localISOString()} Upgrading HackNet ${levelLabel} for $${ns.formatNumber(upgradeCost)}`);
+        ns.print(`${localISOString()} Upgrading HackNet ${levelLabel} for $${ns.formatNumber(upgradeCost)}`);
         wasItemPurchased = true;
       }
     } else {

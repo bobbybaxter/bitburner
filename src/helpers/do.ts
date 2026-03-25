@@ -34,16 +34,25 @@ function uniqueID(s: string, random = false): string {
   return answer;
 }
 
-// Writes a command to a file, runs it, and then returns the result
+const DO_ERROR_MARKER = '__doError';
+
+// Writes a command to a file, runs it, and then returns the result. On failure, logs and rethrows.
 export async function Do(ns: NS, command: string, ...args: unknown[]): Promise<unknown> {
   //FFIGNORE
   const progname = '/temp/proc-' + uniqueID(command);
   writeIfNotSame(
     ns,
     progname + '.js',
-    `export async function main(ns) { ns.writePort(ns.pid, JSON.stringify((await ` +
+    `export async function main(ns) {
+  try {
+    const result = (await ` +
       command +
-      `(...JSON.parse(ns.args[0]))) ?? "UnDeFiNeDaF"), 'w'); }`,
+      `(...JSON.parse(ns.args[0]))) ?? "UnDeFiNeDaF";
+    ns.writePort(ns.pid, JSON.stringify(result), 'w');
+  } catch (e) {
+    ns.writePort(ns.pid, JSON.stringify({ ${DO_ERROR_MARKER}: true, message: (e && e.message) || String(e) }), 'w');
+  }
+}`,
   );
   let pid = ns.run(progname + '.js', 1, JSON.stringify(args));
   let z = -1;
@@ -54,18 +63,32 @@ export async function Do(ns: NS, command: string, ...args: unknown[]): Promise<u
   }
   await ns.getPortHandle(pid).nextWrite();
   const answer = JSON.parse(ns.readPort(pid));
+  if (answer && typeof answer === 'object' && answer[DO_ERROR_MARKER] === true) {
+    const msg = answer.message ?? 'Unknown error';
+    ns.tprint(`Do(${command}) error: ${msg}`);
+    throw new Error(msg);
+  }
   return answer === 'UnDeFiNeDaF' ? null : answer;
 }
 
-// Writes a command to a file, runs against every argument, and then returns the result as an object
+// Writes a command to a file, runs against every argument, and then returns the result as an object. On failure, logs and rethrows.
 export async function DoAll(ns: NS, command: string, args: unknown[]): Promise<unknown> {
   const progname = '/temp/procA-' + uniqueID(command);
   writeIfNotSame(
     ns,
     progname + '.js',
-    `export async function main(ns) { let parsed = JSON.parse(ns.args[0]); let answer = {}; for (let i = 0; i < parsed.length ; i++) {answer[parsed[i]] = await ` +
+    `export async function main(ns) {
+  try {
+    let parsed = JSON.parse(ns.args[0]);
+    let answer = {};
+    for (let i = 0; i < parsed.length; i++) { answer[parsed[i]] = await ` +
       command +
-      `(parsed[i]);}; ns.writePort(ns.pid, JSON.stringify(answer), 'w'); }`,
+      `(parsed[i]); }
+    ns.writePort(ns.pid, JSON.stringify(answer), 'w');
+  } catch (e) {
+    ns.writePort(ns.pid, JSON.stringify({ ${DO_ERROR_MARKER}: true, message: (e && e.message) || String(e) }), 'w');
+  }
+}`,
   );
   let pid = ns.run(progname + '.js', 1, JSON.stringify(args));
   while (0 == pid) {
@@ -76,18 +99,32 @@ export async function DoAll(ns: NS, command: string, args: unknown[]): Promise<u
     await ns.asleep(0);
   }
   const answer = JSON.parse(ns.readPort(pid));
+  if (answer && typeof answer === 'object' && answer[DO_ERROR_MARKER] === true) {
+    const msg = answer.message ?? 'Unknown error';
+    ns.tprint(`DoAll(${command}) error: ${msg}`);
+    throw new Error(msg);
+  }
   return answer;
 }
 
-// Writes a command to a file, runs against every argument, and then returns the result as an object
+// Writes a command to a file, runs against every argument, and then returns the result as an object. On failure, logs and rethrows.
 export async function DoAllComplex(ns: NS, command: string, args: unknown[]): Promise<unknown> {
   const progname = '/temp/procC-' + uniqueID(command);
   writeIfNotSame(
     ns,
     progname + '.js',
-    `export async function main(ns) { let parsed = JSON.parse(ns.args[0]); let answer = {}; for (let i = 0; i < parsed.length ; i++) {answer[parsed[i]] = await ` +
+    `export async function main(ns) {
+  try {
+    let parsed = JSON.parse(ns.args[0]);
+    let answer = {};
+    for (let i = 0; i < parsed.length; i++) { answer[parsed[i]] = await ` +
       command +
-      `(...parsed[i]);}; ns.writePort(ns.pid, JSON.stringify(answer), 'w'); }`,
+      `(...parsed[i]); }
+    ns.writePort(ns.pid, JSON.stringify(answer), 'w');
+  } catch (e) {
+    ns.writePort(ns.pid, JSON.stringify({ ${DO_ERROR_MARKER}: true, message: (e && e.message) || String(e) }), 'w');
+  }
+}`,
   );
   let pid = ns.run(progname + '.js', 1, JSON.stringify(args));
   while (0 == pid) {
@@ -98,5 +135,10 @@ export async function DoAllComplex(ns: NS, command: string, args: unknown[]): Pr
     await ns.asleep(0);
   }
   const answer = JSON.parse(ns.readPort(pid));
+  if (answer && typeof answer === 'object' && answer[DO_ERROR_MARKER] === true) {
+    const msg = answer.message ?? 'Unknown error';
+    ns.tprint(`DoAllComplex(${command}) error: ${msg}`);
+    throw new Error(msg);
+  }
   return answer;
 }
