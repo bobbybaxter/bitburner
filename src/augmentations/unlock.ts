@@ -41,6 +41,11 @@ interface ExtendedPlayer {
   workType?: string;
 }
 
+/** Faction membership and work state from the running script — avoids stale `Do(ns.getPlayer')` right after singularity actions in a subprocess. */
+function livePlayer(ns: NS): ExtendedPlayer {
+  return ns.getPlayer() as unknown as ExtendedPlayer;
+}
+
 type GangInfo = { faction: string };
 
 const FLAGS: [string, string | number | boolean | string[]][] = [
@@ -115,15 +120,16 @@ export async function main(ns: NS): Promise<void> {
 }
 
 export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = {}): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    // TODO: may need to put some logic in here to prestige (apply augs) when a certain condition is met, like time passing since an aug was purchased
-    let allFutureAugs = await getFutureAugs(ns, { domains, cheap });
-    for (const aug of allFutureAugs.filter((a) => a.moneyOnly)) {
-      const factionName = purchaseFactionName(aug.canPurchaseFrom) ?? 'unknown';
-      ns.tprint(
-        `Skipping '${aug.name}' via ${factionName} — have enough rep, need ${ns.formatNumber(aug.price ?? 0)}.`,
-      );
-    }
+  let allFutureAugs = await getFutureAugs(ns, { domains, cheap });
+  for (const aug of allFutureAugs.filter((a) => a.moneyOnly)) {
+    const factionName = purchaseFactionName(aug.canPurchaseFrom) ?? 'unknown';
+    ns.tprint(`Skipping '${aug.name}' via ${factionName} — have enough rep, need ${ns.formatNumber(aug.price ?? 0)}.`);
+  }
+
+  /** Failsafe: without this, a failed join (we assumed success) could spin as fast as Do/getFutureAugs allow. */
+  const maxUnlockRounds = 64;
+  let exitedUnlockLoopCleanly = false;
+  for (let round = 0; round < maxUnlockRounds; round++) {
     let futureAugs = allFutureAugs.filter((a) => !a.moneyOnly && a.workableFaction);
 
     while (futureAugs.length > 0) {
@@ -132,51 +138,67 @@ export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = 
       ns.tprint(
         `Next unlock: '${aug.name}' via ${faction?.name ?? 'unknown'} (${ns.formatNumber(faction?.repNeeded ?? 0, 3)} more rep needed).`,
       );
-      const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+      const player = livePlayer(ns);
       if (player.isWorking && player.workType !== 'Working for Faction') {
         ns.tprint(`Not starting faction work because player is already ${player.workType}.`);
-        console.log(`Not starting faction work because player is already ${player.workType}.`);
+        ns.print(`Not starting faction work because player is already ${player.workType}.`);
         return;
       }
       for (const workType of getWorkTypes(player)) {
         if (faction && (await Do(ns, 'ns.singularity.workForFaction', faction.name, workType, false))) {
-          console.log(`Started working for ${faction.name} as ${workType}.`);
+          ns.print(`Started working for ${faction.name} as ${workType}.`);
           break;
         }
       }
 
-      console.log('Waiting for player to finish work.');
+      ns.print('Waiting for player to finish work.');
       await ns.sleep(60 * 1000);
-      const updatedPlayer = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+      const updatedPlayer = livePlayer(ns);
       if (!updatedPlayer.isWorking) {
-        console.log('Player is not working anymore.');
+        ns.print('Player is not working anymore.');
         return;
       } else {
-        console.log('WORKING');
+        ns.print('WORKING');
       }
       allFutureAugs = await getFutureAugs(ns, { domains, cheap });
       futureAugs = allFutureAugs.filter((a) => !a.moneyOnly && a.workableFaction);
     }
 
-    const joinableAugs = (await getFutureAugs(ns, { domains, cheap })).filter((a) => !a.moneyOnly);
+    allFutureAugs = await getFutureAugs(ns, { domains, cheap });
+    const joinableAugs = allFutureAugs.filter((a) => !a.moneyOnly);
     const nextAug = joinableAugs.find((a) => a.joinableFaction);
-    if (!nextAug) break;
+    if (!nextAug) {
+      exitedUnlockLoopCleanly = true;
+      break;
+    }
     const joinableFaction = nextAug.joinableFaction!;
 
     ns.tprint(
       `Next unlock: '${nextAug.name}' — joining ${joinableFaction.name} first (${ns.formatNumber(nextAug.price ?? 0)} needed).`,
     );
-    const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
-    const currentlyInFaction = player.factions.includes(joinableFaction.name);
+    const currentlyInFaction = livePlayer(ns).factions.includes(joinableFaction.name);
     if (!currentlyInFaction) {
-      console.log(`Taking action to join faction: ${joinableFaction.name}`);
-      await takeActionToJoinFaction(ns, joinableFaction);
+      ns.print(`Taking action to join faction: ${joinableFaction.name}`);
+      const progressed = await takeActionToJoinFaction(ns, joinableFaction);
+      if (!progressed) {
+        ns.tprint(
+          `Cannot join ${joinableFaction.name} yet (requirements still unmet). Stop and retry after progressing.`,
+        );
+        exitedUnlockLoopCleanly = true;
+        break;
+      }
+      allFutureAugs = await getFutureAugs(ns, { domains, cheap });
       continue;
-    } else {
-      console.log(`Already in faction: ${joinableFaction.name}`);
     }
 
-    continue;
+    ns.print(`Already in faction: ${joinableFaction.name}`);
+    exitedUnlockLoopCleanly = true;
+    break;
+  }
+  if (!exitedUnlockLoopCleanly) {
+    ns.tprint(
+      `Unlock automation hit the safety limit (${maxUnlockRounds} join-plan rounds). Re-run after progressing if needed.`,
+    );
   }
 }
 
@@ -779,10 +801,9 @@ async function applyForBestRepPosition(ns: NS, company: string): Promise<boolean
 export async function takeActionToJoinFaction(
   ns: NS,
   faction: FactionWithRep & { name: string; inviteReqs?: PlayerRequirement[] },
-): Promise<void> {
-  const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
-  if (player.factions.includes(faction.name)) {
-    return;
+): Promise<boolean> {
+  if (livePlayer(ns).factions.includes(faction.name)) {
+    return true;
   }
   const factionWithReqs: FactionWithRep & { name: string; inviteReqs: PlayerRequirement[] } =
     faction.inviteReqs !== undefined
@@ -804,8 +825,18 @@ export async function takeActionToJoinFaction(
 
   if (unmetRequirements.length === 0) {
     ns.tprint(`Joining faction: ${faction.name}`);
-    await Do(ns, 'ns.singularity.joinFaction', faction.name);
+    const joined = ns.singularity.joinFaction(faction.name);
+    if (!joined) {
+      ns.tprint(`joinFaction(${faction.name}) returned false.`);
+      return false;
+    }
+    if (!livePlayer(ns).factions.includes(faction.name)) {
+      ns.tprint(`Join ${faction.name} did not apply (still not a member). Will not retry in a tight loop.`);
+      return false;
+    }
+    return true;
   }
+  return false;
 }
 
 interface FutureAug {
@@ -844,7 +875,8 @@ export async function getFutureAugs(
     map[faction] = index;
     return map;
   }, {});
-  const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+  const base = livePlayer(ns);
+  const player: ExtendedPlayer = { ...base };
   player.augmentations = (await Do(ns, 'ns.singularity.getOwnedAugmentations', true)) as string[];
 
   const resetInfo = (await Do(ns, 'ns.getResetInfo')) as { currentNode: number };

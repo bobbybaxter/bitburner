@@ -1,5 +1,6 @@
 //
 import { NS, Server } from '@ns';
+import { computeThreadsPerBatch, getOptimalServer, scoreTargetForBatch } from '/helpers/hack-target-score.js';
 import { disableNoisyLogs, formulas, getServerNames } from '/helpers/index.js';
 
 type BatchEvent = { host: string; target: string; threads: number; type: string };
@@ -547,13 +548,6 @@ function allocateThreads(
   return events;
 }
 
-function getOptimalServer({ ns, targetServer }: { ns: NS; targetServer: string }): Server {
-  const server = ns.getServer(targetServer);
-  server.moneyAvailable = server.moneyMax;
-  server.hackDifficulty = server.minDifficulty;
-  return server;
-}
-
 /** True if target is at min security and max money (ready for HWGW batching). */
 function isPrepped(ns: NS, hostname: string): boolean {
   const minSec = ns.getServerMinSecurityLevel(hostname);
@@ -561,40 +555,6 @@ function isPrepped(ns: NS, hostname: string): boolean {
   const maxMoney = ns.getServerMaxMoney(hostname);
   const currentMoney = ns.getServerMoneyAvailable(hostname);
   return currentSec <= minSec + prepSecurityEpsilon && currentMoney >= maxMoney * prepMoneyFraction;
-}
-
-/** Compute threads per batch for a given hack fraction on a target. Uses optimal state (min sec, max money) for accuracy. */
-function computeThreadsPerBatch(ns: NS, hostname: string, hackFraction: number): number {
-  const optimalServer = getOptimalServer({ ns, targetServer: hostname });
-  const maxMoney = Math.max(optimalServer.moneyMax ?? optimalServer.moneyAvailable ?? 1, 1);
-  const hackPercentPerThread = ns.fileExists('/Formulas.exe')
-    ? formulas.getHackPercent(ns, optimalServer, ns.getPlayer())
-    : ns.hackAnalyze(hostname);
-  if (hackPercentPerThread <= 0) return Infinity;
-  const amountToHack = maxMoney * hackFraction;
-  const hackThreadsRaw = amountToHack / (maxMoney * hackPercentPerThread);
-  const postHackMoney = Math.max(maxMoney * (1 - hackFraction), 1);
-  const serverBeforeGrow = { ...optimalServer, moneyAvailable: postHackMoney };
-  const growThreadsRaw = formulas.getGrowThreads(ns, serverBeforeGrow, ns.getPlayer(), hackThreadsRaw);
-  const weaken1ThreadsRaw = (hackThreadsRaw * 0.002) / 0.05;
-  const weaken2ThreadsRaw = (growThreadsRaw * 0.004) / 0.05;
-  return (
-    Math.ceil(hackThreadsRaw) + Math.ceil(growThreadsRaw) + Math.ceil(weaken1ThreadsRaw) + Math.ceil(weaken2ThreadsRaw)
-  );
-}
-
-/** Score target by $/sec per RAM (expected $ per thread per second). Higher = better. Uses 1% hack for fair comparison. */
-function scoreTargetForBatch(ns: NS, hostname: string, referenceHackFraction: number = 0.01): number {
-  const optimalServer = getOptimalServer({ ns, targetServer: hostname });
-  const maxMoney = Math.max(optimalServer.moneyMax ?? optimalServer.moneyAvailable ?? 1, 1);
-  const hackChance = ns.fileExists('/Formulas.exe')
-    ? formulas.getHackChance(ns, optimalServer, ns.getPlayer())
-    : ns.hackAnalyzeChance(hostname);
-  const weakenTime = formulas.getWeakenTime(ns, optimalServer, ns.getPlayer());
-  const threadsPerBatch = computeThreadsPerBatch(ns, hostname, referenceHackFraction);
-  const expectedMoneyPerBatch = maxMoney * referenceHackFraction * hackChance;
-  if (threadsPerBatch <= 0 || weakenTime <= 0) return 0;
-  return expectedMoneyPerBatch / (threadsPerBatch * weakenTime);
 }
 
 /** Find largest hack fraction that fits within thread budget (pipeline-driven auto-tune). */

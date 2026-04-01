@@ -1,5 +1,6 @@
 import { NS } from '@ns';
 import { Do } from '/helpers/do.js';
+import { DivisionName, hasDivision } from './helpers/corpo/corporation-utils';
 
 /**
  * Starts all scripts on the home server
@@ -8,15 +9,14 @@ import { Do } from '/helpers/do.js';
 export async function main(ns: NS): Promise<void> {
   // disableNoisyLogs(ns);
 
-  const running = new Set(ns.ps('home').map((p) => p.filename));
-  const isRunning = (script: string) => running.has(script);
-
-  await ns.run('infiltrate.js', 1); // 1.5GB RAM
-  await ns.run('open-all-ports.js', 1); // 4.2GB RAM
-  if (!isRunning('stockmaster.js')) await ns.run('stockmaster.js', 1); // 3.6GB RAM
-  if (!isRunning('hacknet-opt.js')) await ns.run('hacknet-opt.js', 1, 1, 100); // 7.45GB RAM
-  if (!isRunning('home-opt.js')) await ns.run('home-opt.js', 1);
-  if (!isRunning('pserv-opt.js')) await ns.run('pserv-opt.js', 1); // 8.5GB RAM
+  await ns.run('infiltrate.js', 1);
+  await ns.run('open-all-ports.js', 1);
+  if (!ns.isRunning('stockmaster.js')) await ns.run('stockmaster.js', 1);
+  if (!ns.isRunning('hacknet-opt.js')) await ns.run('hacknet-opt.js', 1, 1, 100);
+  if (!ns.isRunning('home-opt.js')) await ns.run('home-opt.js', 1);
+  if (ns.getPurchasedServerLimit() > 0 && !ns.isRunning('pserv-opt.js')) {
+    await ns.run('pserv-opt.js', 1);
+  }
 
   const resetInfo = ns.getResetInfo();
   const ownedSFString = [...resetInfo.ownedSF.entries()]
@@ -25,79 +25,66 @@ export async function main(ns: NS): Promise<void> {
     .join(', ');
   ns.tprint(`current node: ${resetInfo.currentNode} | ${ownedSFString}`);
 
-  const hasSF3OrBN3 = resetInfo.currentNode === 3 || resetInfo.ownedSF.has(3);
-  if (hasSF3OrBN3 && !isRunning('workaround.js')) {
+  const hasSF2 = resetInfo.currentNode === 2 || resetInfo.ownedSF.has(2);
+  if (hasSF2 && !ns.isRunning('gangs.js')) {
+    await ns.run('gangs.js', 1);
+  }
+
+  const hasSF3 = resetInfo.currentNode === 3 || resetInfo.ownedSF.has(3);
+  if (hasSF3 && !ns.isRunning('workaround.js')) {
     await ns.run('workaround.js', 1, '--hud');
+  }
+
+  if ((resetInfo.currentNode === 3 || resetInfo.ownedSF.has(3)) && !ns.isRunning('corporation.js')) {
+    const canCreateCorporationSelfFund = ns.corporation.canCreateCorporation(true);
+    const canCreateCorporationBorrowFunds = ns.corporation.canCreateCorporation(false);
+
+    if (ns.corporation.hasCorporation()) {
+      if (!hasDivision(ns, DivisionName.CHEMICAL)) {
+        if (ns.exec('corporation.js', 'home', 1, '--round2', '--benchmark') === 0) {
+          ns.toast('Failed to run corporation.js --round2 --benchmark');
+        }
+      } else if (!hasDivision(ns, DivisionName.TOBACCO_0)) {
+        if (ns.exec('corporation.js', 'home', 1, '--round3', '--benchmark') === 0) {
+          ns.toast('Failed to run corporation.js --round3 --benchmark');
+        }
+      } else {
+        if (ns.exec('corporation.js', 'home', 1, '--improveAllDivisions', '--benchmark') === 0) {
+          ns.toast('Failed to run corporation.js --improveAllDivisions --benchmark');
+        }
+      }
+    } else if (canCreateCorporationSelfFund) {
+      await ns.run('corporation.js', 1, '--round1', '--auto', '--selfFund');
+    } else if (canCreateCorporationBorrowFunds) {
+      await ns.run('corporation.js', 1, '--round1', '--auto');
+    }
   }
 
   const hasSF4 = resetInfo.ownedSF.has(4) || resetInfo.currentNode === 4;
   if (!hasSF4) return;
 
-  const travelResult = await Do(ns, 'ns.singularity.travelToCity', 'Sector-12');
-  ns.tprint(`travelToCity result: ${travelResult}`);
-  const goToResult = await Do(ns, 'ns.singularity.goToLocation', 'MegaCorp');
-  ns.tprint(`goToLocation result: ${goToResult}`);
-
-  const doc = eval('document');
-  let infiltrateBtn: HTMLElement | undefined;
-  const allButtons: string[] = [];
-  for (let i = 0; i < 25 && !infiltrateBtn; i++) {
-    await ns.sleep(200);
-    const buttons = [...doc.querySelectorAll('button')];
-    if (i === 0 || i === 24) {
-      buttons.forEach((b: Element) => allButtons.push(b.textContent ?? '(empty)'));
+  const infilGrindMoneyTarget = 1e9;
+  if (ns.getPlayer().money < infilGrindMoneyTarget) {
+    const grindPid = await ns.run('grind-infil.js', 1, 'MegaCorp', 'money', String(infilGrindMoneyTarget));
+    if (grindPid === 0) {
+      ns.tprint('WARN: grind-infil.js did not start (RAM or missing script). Skipping MegaCorp infiltration grind.');
+    } else {
+      while (ns.isRunning('grind-infil.js')) {
+        await ns.sleep(500);
+      }
     }
-    infiltrateBtn = buttons.find((b: Element) => b.textContent?.includes('Infiltrate')) as HTMLElement | undefined;
   }
 
-  if (!infiltrateBtn) {
-    ns.tprint(`ERROR: Infiltrate button not found. Buttons on page: ${JSON.stringify(allButtons)}`);
-  } else {
-    ns.tprint(`Found infiltrate button: "${infiltrateBtn.textContent}"`);
-    const reactPropsKey = Object.keys(infiltrateBtn).find((k) => k.startsWith('__reactProps'));
-    if (reactPropsKey) {
-      const props = (infiltrateBtn as unknown as Record<string, Record<string, (e: unknown) => void>>)[reactPropsKey];
-      ns.tprint(`reactProps has onClick: ${typeof props?.onClick}`);
-      if (typeof props?.onClick === 'function') {
-        props.onClick({
-          isTrusted: true,
-          preventDefault: () => {},
-          stopPropagation: () => {},
-          currentTarget: infiltrateBtn,
-          target: infiltrateBtn,
-          type: 'click',
-          nativeEvent: { isTrusted: true, stopImmediatePropagation: () => {} },
-        });
-        ns.tprint('Called onClick via __reactProps with isTrusted: true');
-
-        // Wait for infiltration to complete, then click "Sell"
-        let sellBtn: HTMLElement | undefined;
-        for (let i = 0; i < 600 && !sellBtn; i++) {
-          await ns.sleep(500);
-          sellBtn = [...doc.querySelectorAll('button')].find((b: Element) => b.textContent?.includes('Sell')) as
-            | HTMLElement
-            | undefined;
-        }
-        if (sellBtn) {
-          const sellPropsKey = Object.keys(sellBtn).find((k: string) => k.startsWith('__reactProps'));
-          if (sellPropsKey) {
-            const sellProps = (sellBtn as unknown as Record<string, Record<string, (e: unknown) => void>>)[
-              sellPropsKey
-            ];
-            sellProps?.onClick?.({
-              isTrusted: true,
-              preventDefault: () => {},
-              stopPropagation: () => {},
-            });
-            ns.tprint('Auto-sold infiltration data');
-          }
-        } else {
-          ns.tprint('WARN: Sell button not found after infiltration');
-        }
-      }
-    } else {
-      ns.tprint('ERROR: __reactProps key not found on button');
-    }
+  if (!ns.isRunning('backdoor.js')) await ns.run('backdoor.js', 1);
+  // if (!ns.isRunning('augs.js')) await ns.run('augs.js', 1);
+  if (!ns.isRunning('hack3.js')) await ns.run('hack3.js', 1);
+  if (
+    resetInfo.currentNode === 6 ||
+    resetInfo.currentNode === 7 ||
+    resetInfo.ownedSF.has(6) ||
+    resetInfo.ownedSF.has(7)
+  ) {
+    if (!ns.isRunning('bladeburner.js')) await ns.run('bladeburner.js', 1);
   }
 
   while (!ns.hasTorRouter()) {
@@ -106,18 +93,28 @@ export async function main(ns: NS): Promise<void> {
     await ns.sleep(60_000);
   }
 
-  const programs: string[] = (await Do(ns, 'ns.singularity.getDarkwebPrograms')) as string[];
-  await Promise.all(
-    programs.map(async (program: string) => {
-      ns.tprint(`Purchasing program: ${program}`);
-      await Do(ns, 'ns.singularity.purchaseProgram', program).then(
-        () => ns.tprint(`SUCCESS: Purchased program: ${program}`),
-        (e) => ns.tprint(`WARN: Failed to purchase program: ${program}: ${e}`),
-      );
-    }),
-  );
+  while (true) {
+    const programs: string[] = (await Do(ns, 'ns.singularity.getDarkwebPrograms')) as string[];
+    const programsToPurchase: string[] = [];
+    for (const program of programs) {
+      const cost = (await Do(ns, 'ns.singularity.getDarkwebProgramCost', program)) as number;
+      if (cost > 0) {
+        programsToPurchase.push(program);
+      }
+    }
 
-  if (!isRunning('backdoor.js')) await ns.run('backdoor.js', 1);
-  if (!isRunning('augs.js')) await ns.run('augs.js', 1);
-  if (!isRunning('hack3.js')) await ns.run('hack3.js', 1); // 10.5GB RAM
+    if (programsToPurchase.length === 0) return;
+
+    await Promise.all(
+      programsToPurchase.map(async (program: string) => {
+        ns.tprint(`Purchasing program: ${program}`);
+        await Do(ns, 'ns.singularity.purchaseProgram', program).then(
+          () => ns.tprint(`SUCCESS: Purchased program: ${program}`),
+          (e) => ns.tprint(`WARN: Failed to purchase program: ${program}: ${e}`),
+        );
+      }),
+    );
+
+    await ns.sleep(60_000);
+  }
 }

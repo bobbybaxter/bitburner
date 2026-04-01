@@ -17,7 +17,7 @@ export async function getActiveSourceFiles_Custom(
   try {
     dictSourceFiles = (await fnGetNsDataThroughFile(
       ns,
-      `Object.fromEntries(await Do(ns, 'ns.singularity.getOwnedSourceFiles').map(sf => [sf.n, sf.lvl]))`,
+      `Object.fromEntries(ns.singularity.getOwnedSourceFiles().map(sf => [sf.n, sf.lvl]))`,
       '/Temp/owned-source-files.txt',
     )) as Record<number, number>;
   } catch {

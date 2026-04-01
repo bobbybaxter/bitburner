@@ -28,6 +28,7 @@ export function autocomplete(data: AutocompleteData, _flags: string[]): string[]
 let ns: NS;
 let nsx: NetscriptExtension;
 let config: NetscriptFlags;
+const corporationSaveModeFile = '/tmp/corporation-save-mode.txt';
 
 const defaultConfig: NetscriptFlagsSchema = [['maintainCorporation', false]];
 
@@ -41,7 +42,7 @@ async function collectCorporationEventLog(): Promise<void> {
   // noinspection InfiniteLoopJS
   while (true) {
     corporationEventLogger.cycle = corporationEventLogger.cycle + 1;
-    corporationEventLogger.generateDefaultEvent(ns);
+    await corporationEventLogger.generateDefaultEvent(ns);
     const corporation = ns.corporation.getCorporation();
     if (!reachProfitTarget && corporation.revenue - corporation.expenses >= 1e90) {
       corporationEventLogger.saveEventSnapshotData();
@@ -72,11 +73,28 @@ export async function main(nsContext: NS): Promise<void> {
     });
     let smartSupplyHasBeenEnabledEverywhere = false;
     const warehouseCongestionData = new Map<string, number>();
+    let lastSaveForProductMode: boolean | undefined;
+    let saveModeDiagnosticsCounter = 0;
     // noinspection InfiniteLoopJS
     while (true) {
+      const saveForProductMode = ns.read(corporationSaveModeFile).trim() === '1';
+      if (saveForProductMode !== lastSaveForProductMode) {
+        ns.print(`Daemon save-for-product mode: ${saveForProductMode ? 'ON' : 'OFF'}`);
+        lastSaveForProductMode = saveForProductMode;
+      }
+      if (saveForProductMode) {
+        saveModeDiagnosticsCounter++;
+        if (saveModeDiagnosticsCounter % 20 === 0) {
+          const corp = ns.corporation.getCorporation();
+          ns.print(
+            `Daemon save mode active. Funds: ${ns.formatNumber(corp.funds)}, ` +
+              `profit: ${ns.formatNumber(corp.revenue - corp.expenses)}/s`,
+          );
+        }
+      }
       // Calculate product's markup ASAP
       if (ns.corporation.getCorporation().prevState === CorpState.PRODUCTION) {
-        loopAllDivisionsAndCities(ns, (divisionName, city) => {
+        await loopAllDivisionsAndCities(ns, (divisionName, city) => {
           const division = ns.corporation.getDivision(divisionName);
           if (!division.makesProducts) {
             return;
@@ -93,20 +111,22 @@ export async function main(nsContext: NS): Promise<void> {
         });
       }
 
-      buyTeaAndThrowPartyForAllDivisions(ns);
+      if (!saveForProductMode) {
+        await buyTeaAndThrowPartyForAllDivisions(ns);
+      }
 
       // Smart Supply
       if (!smartSupplyHasBeenEnabledEverywhere) {
         // Enable Smart Supply everywhere if we have unlocked this feature
         if (ns.corporation.hasUnlock(UnlockName.SMART_SUPPLY)) {
-          loopAllDivisionsAndCities(ns, (divisionName, city) => {
+          await loopAllDivisionsAndCities(ns, (divisionName, city) => {
             ns.corporation.setSmartSupply(divisionName, city, true);
           });
           smartSupplyHasBeenEnabledEverywhere = true;
         }
-        if (!smartSupplyHasBeenEnabledEverywhere) {
-          setSmartSupplyData(ns);
-          buyOptimalAmountOfInputMaterials(ns, warehouseCongestionData);
+        if (!smartSupplyHasBeenEnabledEverywhere && !saveForProductMode) {
+          await setSmartSupplyData(ns);
+          await buyOptimalAmountOfInputMaterials(ns, warehouseCongestionData);
         }
       }
 
@@ -114,7 +134,7 @@ export async function main(nsContext: NS): Promise<void> {
       await setOptimalSellingPriceForEverything(ns);
 
       if (ns.corporation.getCorporation().prevState === CorpState.START) {
-        loopAllDivisionsAndCities(ns, (divisionName, city) => {
+        await loopAllDivisionsAndCities(ns, (divisionName, city) => {
           const office = ns.corporation.getOffice(divisionName, city);
           // Check for Unassigned employees
           const unassignedEmployees = office.employeeJobs.Unassigned;

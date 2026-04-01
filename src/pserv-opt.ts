@@ -17,6 +17,11 @@ const CONFIG = {
  * Optimizes purchased servers.
  */
 export async function main(ns: NS): Promise<void> {
+  if (ns.getPurchasedServerLimit() < 1) {
+    ns.tprint('pserv-opt: purchased servers disabled (e.g. BitNode-9); exiting');
+    return;
+  }
+
   let multi = CONFIG.initialMulti;
   const maxRamAvailable = Math.pow(2, 20); // maxRam available for a server
 

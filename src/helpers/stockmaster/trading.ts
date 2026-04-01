@@ -23,6 +23,7 @@ export const purchaseOrder = (a: StockPosition, b: StockPosition): number =>
 export const formatBP = (fraction: number): string => formatNumberShort(fraction * 100 * 100, 3, 2) + ' BP';
 
 export async function doBuy(ns: NS, session: TradingSession, stk: StockPosition, sharesToBuy: number): Promise<number> {
+  if (!Number.isFinite(sharesToBuy) || sharesToBuy < 1) return 0;
   let price = 0;
   if (stk.owned()) session.totalProfit -= COMMISSION;
   const long = stk.bullish();

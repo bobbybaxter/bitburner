@@ -12,7 +12,6 @@ import { Heap } from './heap';
 import { Logger } from './logger';
 import { normalizeProfit } from './normalize-profit';
 import { normalizeProgress } from './normalize-progress';
-import { optimizeStorageAndFactory } from './optimize-storage-and-factory';
 import { PriorityQueue } from './priority-queue';
 import { scaleValueToRange } from './scale-value-to-range';
 import { upgradeOfficeSize } from './upgrade-office-size';
@@ -32,7 +31,6 @@ export {
   Logger,
   normalizeProfit,
   normalizeProgress,
-  optimizeStorageAndFactory,
   PriorityQueue,
   scaleValueToRange,
   upgradeOfficeSize,
