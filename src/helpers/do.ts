@@ -36,6 +36,42 @@ function uniqueID(s: string, random = false): string {
 
 const DO_ERROR_MARKER = '__doError';
 
+/** Player keys that warn when read (e.g. by JSON.stringify of full getPlayer() result). */
+const DEPRECATED_PLAYER_SERIALIZE_KEYS = JSON.stringify([
+  'playtimeSinceLastAug',
+  'playtimeSinceLastBitnode',
+  'bitNodeN',
+]);
+
+/** CorporationInfo keys that warn when read (JSON.stringify in Do() enumerates every property). */
+const DEPRECATED_CORPORATION_SERIALIZE_KEYS = JSON.stringify(['state']);
+
+function doMainBodyForCommand(command: string): string {
+  if (command === 'ns.getPlayer') {
+    return `const _raw = await ns.getPlayer(...JSON.parse(ns.args[0]));
+    const _exc = ${DEPRECATED_PLAYER_SERIALIZE_KEYS};
+    const result =
+      _raw == null
+        ? "UnDeFiNeDaF"
+        : Object.keys(_raw).reduce((copy, key) => {
+            if (!_exc.includes(key)) copy[key] = _raw[key];
+            return copy;
+          }, {});`;
+  }
+  if (command === 'ns.corporation.getCorporation') {
+    return `const _raw = await ns.corporation.getCorporation(...JSON.parse(ns.args[0]));
+    const _exc = ${DEPRECATED_CORPORATION_SERIALIZE_KEYS};
+    const result =
+      _raw == null
+        ? "UnDeFiNeDaF"
+        : Object.keys(_raw).reduce((copy, key) => {
+            if (!_exc.includes(key)) copy[key] = _raw[key];
+            return copy;
+          }, {});`;
+  }
+  return `const result = (await ${command}(...JSON.parse(ns.args[0]))) ?? "UnDeFiNeDaF";`;
+}
+
 // Writes a command to a file, runs it, and then returns the result. On failure, logs and rethrows.
 export async function Do(ns: NS, command: string, ...args: unknown[]): Promise<unknown> {
   //FFIGNORE
@@ -45,9 +81,7 @@ export async function Do(ns: NS, command: string, ...args: unknown[]): Promise<u
     progname + '.js',
     `export async function main(ns) {
   try {
-    const result = (await ` +
-      command +
-      `(...JSON.parse(ns.args[0]))) ?? "UnDeFiNeDaF";
+    ${doMainBodyForCommand(command)}
     ns.writePort(ns.pid, JSON.stringify(result), 'w');
   } catch (e) {
     ns.writePort(ns.pid, JSON.stringify({ ${DO_ERROR_MARKER}: true, message: (e && e.message) || String(e) }), 'w');

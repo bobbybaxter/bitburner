@@ -47,7 +47,7 @@ const argsSchema: ArgsSchemaEntry[] = [
   ['buy-threshold', 0.0001], // Buy only stocks forecasted to earn better than a 0.01% return (1 Basis Point)
   ['sell-threshold', 0], // Sell stocks forecasted to earn less than this return (default 0% - which happens when prob hits 50% or worse)
   ['diversification', 0.34], // Max fraction of portfolio as a single stock (relaxed to 2x with 4S data)
-  ['disableHud', false], // Disable showing stock value in the HUD panel
+  ['disableHud', true], // Disable showing stock value in the HUD panel
   ['disable-purchase-tix-api', false], // Disable purchasing the TIX API if you do not already have it.
   // The following settings are related only to tweaking pre-4s stock-market logic
   ['show-pre-4s-forecast', false], // If set to true, will always generate and display the pre-4s forecast (if false, it's only shown while we hold no stocks)
@@ -304,9 +304,10 @@ export async function main(ns: NS): Promise<void> {
             maxHoldings * (effectiveDiversification + stk.spread_pct) - stk.positionValue() * (1.01 + stk.spread_pct),
           );
           const purchasePrice = stk.bullish() ? stk.ask_price : stk.bid_price;
+          if (!Number.isFinite(budget) || !(purchasePrice > 0)) continue;
           const affordableShares = Math.floor((budget - COMMISSION) / purchasePrice);
           const numShares = Math.min(stk.maxShares - stk.ownedShares(), affordableShares);
-          if (numShares <= 0) continue;
+          if (!Number.isFinite(numShares) || numShares <= 0) continue;
           const ticksBeforeCycleEnd = MARKET_CYCLE_LENGTH - estTick - stk.timeToCoverTheSpread();
           if (ticksBeforeCycleEnd < 1) continue;
           const estEndOfCycleValue = numShares * purchasePrice * ((stk.absReturn() + 1) ** ticksBeforeCycleEnd - 1);

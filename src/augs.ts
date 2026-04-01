@@ -9,12 +9,12 @@ Usage:
 run /augs.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ]
 
 */
-
 import type { NS } from '@ns';
 import { buyAugs, buyNfgAndInstall } from 'augmentations/buy.js';
 import { DOMAINS } from 'augmentations/info.js';
 import { getFutureAugs, unlockAugs } from 'augmentations/unlock.js';
 import { Do } from 'helpers/do.js';
+import { replaceOtherInstancesOfThisScriptOnHost } from 'helpers/kill-script-instances.js';
 
 /** Purchased but not yet installed (since last install). */
 async function countPurchasedPendingInstall(ns: NS): Promise<number> {
@@ -38,6 +38,7 @@ export function autocomplete(
 }
 
 export async function main(ns: NS): Promise<void> {
+  replaceOtherInstancesOfThisScriptOnHost(ns, 'home');
   ns.disableLog('sleep');
   ns.clearLog();
 

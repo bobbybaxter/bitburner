@@ -72,7 +72,7 @@ export async function refresh(
     stk.ask_price = data.ask;
     stk.bid_price = data.bid;
     stk.spread = stk.ask_price - stk.bid_price;
-    stk.spread_pct = stk.spread / stk.ask_price;
+    stk.spread_pct = stk.ask_price > 0 ? stk.spread / stk.ask_price : 0;
     stk.price = (stk.ask_price + stk.bid_price) / 2;
     stk.vol = has4s ? data.vol! : stk.vol;
     stk.prob = has4s ? data.forecast! : stk.prob;

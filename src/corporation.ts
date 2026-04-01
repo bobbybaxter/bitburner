@@ -1,3 +1,7 @@
+// TODO: refactor this file, separating into multiple files
+// TODO: make all rounds idempotent
+//
+
 import { AutocompleteData, CityName, CorpIndustryData, Material, NS, Product } from '@ns';
 import {
   NetscriptExtension,
@@ -10,11 +14,11 @@ import { corporationEventLogger } from './helpers/corpo/corporation-event-logger
 import {
   CorpState,
   DivisionResearches,
-  EmployeePosition,
   getMaxAffordableAdVertLevel,
   getMaxAffordableOfficeSize,
   getMaxAffordableUpgradeLevel,
   getMaxAffordableWarehouseLevel,
+  getOfficeUpgradeCost,
   IndustryType,
   MaterialName,
   OfficeSetup,
@@ -54,7 +58,6 @@ import {
   exportString,
   findOptimalAmountOfBoostMaterials,
   generateMaterialsOrders,
-  generateOfficeSetups,
   generateOfficeSetupsForEarlyRounds,
   getDivisionResearches,
   getIndustryData,
@@ -263,11 +266,13 @@ let agricultureIndustryData: CorpIndustryData;
 let chemicalIndustryData: CorpIndustryData;
 let tobaccoIndustryData: CorpIndustryData;
 let budgetRatioForProductDivision = defaultBudgetRatioForProductDivision;
+const corporationSaveModeFile = '/tmp/corporation-save-mode.txt';
 
 const defaultConfig: NetscriptFlagsSchema = [
   ['benchmark', false],
   ['auto', false],
   ['selfFund', false],
+  ['wilsonCap', 15],
   ['round1', false],
   ['round2', false],
   ['round3', false],
@@ -283,6 +288,53 @@ function init(nsContext: NS): void {
   supportProductDevelopmentCities = Object.values(ns.enums.CityName).filter(
     (cityName) => cityName !== mainProductDevelopmentCity,
   );
+}
+
+function getConfiguredWilsonCap(): number {
+  const rawCap = Number(config.wilsonCap);
+  if (!Number.isFinite(rawCap) || rawCap < 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.floor(rawCap);
+}
+
+function toRnDOnlyOfficeSetups(officeSetups: OfficeSetup[]): OfficeSetup[] {
+  return officeSetups.map((officeSetup) => ({
+    city: officeSetup.city,
+    size: officeSetup.size,
+    jobs: {
+      Operations: 0,
+      Engineer: 0,
+      Business: 0,
+      Management: 0,
+      'Research & Development': officeSetup.size,
+      Intern: 0,
+    },
+  }));
+}
+
+async function waitUntilHavingEnoughResearchPointsWithRnDStaffing(
+  conditions: {
+    divisionName: string;
+    researchPoint: number;
+  }[],
+  officeSetupsToRestore: {
+    divisionName: string;
+    officeSetups: OfficeSetup[];
+  }[],
+): Promise<void> {
+  ns.print('Assigning all employees to R&D before waiting for research points...');
+  for (const item of officeSetupsToRestore) {
+    await assignJobs(ns, item.divisionName, toRnDOnlyOfficeSetups(item.officeSetups));
+  }
+  try {
+    await waitUntilHavingEnoughResearchPoints(ns, conditions);
+  } finally {
+    ns.print('Restoring employee job setups after RP wait...');
+    for (const item of officeSetupsToRestore) {
+      await assignJobs(ns, item.divisionName, item.officeSetups);
+    }
+  }
 }
 
 async function round1(option?: Round1Option): Promise<void> {
@@ -313,6 +365,7 @@ async function round1(option?: Round1Option): Promise<void> {
     ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>).funds,
     0,
   );
+
   const dataArray = new CorporationOptimizer().optimizeStorageAndFactory(
     agricultureIndustryData,
     ((await Do(ns, 'ns.corporation.getUpgradeLevel', UpgradeName.SMART_STORAGE)) ?? 0) as number,
@@ -326,6 +379,7 @@ async function round1(option?: Round1Option): Promise<void> {
     optimizerBudget,
     false,
   );
+
   if (dataArray.length === 0) {
     ns.print('No storage/factory optimization possible with current budget.');
   } else {
@@ -341,18 +395,19 @@ async function round1(option?: Round1Option): Promise<void> {
     }
   }
 
-  await waitUntilHavingEnoughResearchPoints(ns, [
-    {
-      divisionName: DivisionName.AGRICULTURE,
-      researchPoint: option.waitForAgricultureRP,
-    },
-  ]);
-
-  ns.print('Assigning employee jobs for Agriculture...');
-  await assignJobs(
-    ns,
-    DivisionName.AGRICULTURE,
-    generateOfficeSetupsForEarlyRounds(option.agricultureOfficeSize, false),
+  await waitUntilHavingEnoughResearchPointsWithRnDStaffing(
+    [
+      {
+        divisionName: DivisionName.AGRICULTURE,
+        researchPoint: option.waitForAgricultureRP,
+      },
+    ],
+    [
+      {
+        divisionName: DivisionName.AGRICULTURE,
+        officeSetups: generateOfficeSetupsForEarlyRounds(option.agricultureOfficeSize, false),
+      },
+    ],
   );
 
   ns.print('Calculating optimal boost materials for Agriculture...');
@@ -501,9 +556,7 @@ async function round2(option?: Round2Option): Promise<void> {
   await upgradeOffices(
     ns,
     DivisionName.AGRICULTURE,
-    generateOfficeSetups(cities, option.agricultureOfficeSize, [
-      { name: EmployeePosition.RESEARCH_DEVELOPMENT, count: option.agricultureOfficeSize },
-    ]),
+    generateOfficeSetupsForEarlyRounds(option.agricultureOfficeSize, false),
   );
 
   // Create Chemical division
@@ -603,16 +656,28 @@ async function round2(option?: Round2Option): Promise<void> {
     await upgradeWarehouse(ns, DivisionName.AGRICULTURE, city, optimalData.warehouseLevel);
   }
 
-  await waitUntilHavingEnoughResearchPoints(ns, [
-    {
-      divisionName: DivisionName.AGRICULTURE,
-      researchPoint: option.waitForAgricultureRP,
-    },
-    {
-      divisionName: DivisionName.CHEMICAL,
-      researchPoint: option.waitForChemicalRP,
-    },
-  ]);
+  await waitUntilHavingEnoughResearchPointsWithRnDStaffing(
+    [
+      {
+        divisionName: DivisionName.AGRICULTURE,
+        researchPoint: option.waitForAgricultureRP,
+      },
+      {
+        divisionName: DivisionName.CHEMICAL,
+        researchPoint: option.waitForChemicalRP,
+      },
+    ],
+    [
+      {
+        divisionName: DivisionName.AGRICULTURE,
+        officeSetups: generateOfficeSetupsForEarlyRounds(option.agricultureOfficeSize, option.increaseBusiness),
+      },
+      {
+        divisionName: DivisionName.CHEMICAL,
+        officeSetups: generateOfficeSetupsForEarlyRounds(3),
+      },
+    ],
+  );
 
   ns.print('Buying additional AdVert for Agriculture...');
   await buyAdvert(
@@ -623,14 +688,6 @@ async function round2(option?: Round2Option): Promise<void> {
       ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>).funds,
     ),
   );
-
-  ns.print('Assigning employee jobs for Agriculture and Chemical...');
-  await assignJobs(
-    ns,
-    DivisionName.AGRICULTURE,
-    generateOfficeSetupsForEarlyRounds(option.agricultureOfficeSize, option.increaseBusiness),
-  );
-  await assignJobs(ns, DivisionName.CHEMICAL, generateOfficeSetupsForEarlyRounds(3));
 
   ns.print('Calculating optimal boost materials for Agriculture and Chemical...');
   const optimalAmountOfBoostMaterialsForAgriculture = await findOptimalAmountOfBoostMaterials(
@@ -689,9 +746,19 @@ async function round2(option?: Round2Option): Promise<void> {
 
 async function round3(option: Round3Option = PrecalculatedRound3Option.OPTION1): Promise<void> {
   const productDivisionName = DivisionName.TOBACCO_0;
-  if (await hasDivision(ns, DivisionName.TOBACCO_0)) {
-    ns.spawn(ns.getScriptName(), { spawnDelay: 500 }, '--improveAllDivisions');
-    return;
+  const hasPrimaryProductDivision = await hasDivision(ns, DivisionName.TOBACCO_0);
+  if (hasPrimaryProductDivision) {
+    const corp = (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>;
+    const primaryDivision = (await Do(ns, 'ns.corporation.getDivision', productDivisionName)) as ReturnType<
+      NS['corporation']['getDivision']
+    >;
+    const round3LikelyComplete = corp.divisions.length >= 20 && primaryDivision.products.length > 0;
+    if (round3LikelyComplete) {
+      ns.print('Round 3 appears complete. Continuing with improve-all-divisions phase...');
+      ns.spawn(ns.getScriptName(), { spawnDelay: 500 }, '--improveAllDivisions');
+      return;
+    }
+    ns.print('Detected partially completed Round 3. Resuming setup...');
   }
 
   ns.print(`Round 3 options: ${JSON.stringify(option)}`);
@@ -706,7 +773,7 @@ async function round3(option: Round3Option = PrecalculatedRound3Option.OPTION1):
   await buyUnlock(ns, UnlockName.MARKET_DATA_COMPETITION);
 
   const corp3a = (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>;
-  if (corp3a.divisions.length === 20) {
+  if (corp3a.divisions.length === 20 && !hasPrimaryProductDivision) {
     throw new Error('You need to sell 1 division');
   }
 
@@ -842,6 +909,7 @@ async function ensureSellOrdersForFinishedProducts(divisionName: string): Promis
   const products = (
     (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<NS['corporation']['getDivision']>
   ).products;
+  const hasTA1 = (await Do(ns, 'ns.corporation.hasResearched', divisionName, ResearchName.MARKET_TA_1)) as boolean;
   const hasTA2 = (await Do(ns, 'ns.corporation.hasResearched', divisionName, ResearchName.MARKET_TA_2)) as boolean;
   for (const productName of products) {
     const product = (await Do(
@@ -854,12 +922,14 @@ async function ensureSellOrdersForFinishedProducts(divisionName: string): Promis
     if (product.developmentProgress < 100) {
       continue;
     }
+    for (const city of cities) {
+      await Do(ns, 'ns.corporation.sellProduct', divisionName, city, productName, 'MAX', 'MP', false);
+    }
+    if (hasTA1) {
+      await Do(ns, 'ns.corporation.setProductMarketTA1', divisionName, productName, true);
+    }
     if (hasTA2) {
       await Do(ns, 'ns.corporation.setProductMarketTA2', divisionName, productName, true);
-    } else {
-      for (const city of cities) {
-        await Do(ns, 'ns.corporation.sellProduct', divisionName, city, productName, 'MAX', 'MP', false);
-      }
     }
   }
 }
@@ -906,9 +976,68 @@ async function improveAllDivisions(): Promise<void> {
     console.log(`New reservedFunds: ${ns.formatNumber(reservedFunds)}`);
   };
 
+  const parseBudgetFromProductName = (productName: string): number | null => {
+    const lastDashIndex = productName.lastIndexOf('-');
+    if (lastDashIndex < 0 || lastDashIndex >= productName.length - 1) {
+      return null;
+    }
+    const budget = Number(productName.slice(lastDashIndex + 1));
+    if (!Number.isFinite(budget) || budget <= 0) {
+      return null;
+    }
+    return budget;
+  };
+
+  const getRequiredProductDevelopmentBudget = async (divisionName: string): Promise<number> => {
+    const products = (
+      (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<NS['corporation']['getDivision']>
+    ).products;
+    if (products.length === 0) {
+      return 0;
+    }
+    let bestKnownBudget = 0;
+    for (const productName of products) {
+      const parsedBudget = parseBudgetFromProductName(productName);
+      if (parsedBudget !== null) {
+        bestKnownBudget = Math.max(bestKnownBudget, parsedBudget);
+        continue;
+      }
+      const product = (await Do(
+        ns,
+        'ns.corporation.getProduct',
+        divisionName,
+        mainProductDevelopmentCity,
+        productName,
+      )) as Product;
+      bestKnownBudget = Math.max(bestKnownBudget, product.designInvestment + product.advertisingInvestment);
+    }
+    return bestKnownBudget * 1.0102;
+  };
+
+  const hasDevelopingProduct = async (divisionName: string): Promise<boolean> => {
+    const products = (
+      (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<NS['corporation']['getDivision']>
+    ).products;
+    for (const productName of products) {
+      const product = (await Do(
+        ns,
+        'ns.corporation.getProduct',
+        divisionName,
+        mainProductDevelopmentCity,
+        productName,
+      )) as Product;
+      if (product.developmentProgress < 100) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // We use preparingToAcceptOffer to prevent optimizing office right before we switch all offices to "profit" setup.
   // This eliminates a potential race condition.
   let preparingToAcceptOffer = false;
+  let saveForNextProductMode = false;
+  const productSaveExitMultiplier = 1.1;
   // noinspection InfiniteLoopJS
   while (true) {
     ++cycleCount;
@@ -923,10 +1052,31 @@ async function improveAllDivisions(): Promise<void> {
       (currentRound <= 4 ? ` | Offer: ${ns.formatNumber(investmentOfferLoop.funds)}` : '');
     ns.print(cycleStatus);
     console.log(cycleStatus);
+    const productIsDeveloping = await hasDevelopingProduct(primaryProductDivisionName);
+    const requiredProductDevelopmentBudget = productIsDeveloping
+      ? 0
+      : await getRequiredProductDevelopmentBudget(primaryProductDivisionName);
+    const shouldEnterSaveMode = corpLoop.funds < requiredProductDevelopmentBudget;
+    const shouldExitSaveMode = corpLoop.funds >= requiredProductDevelopmentBudget * productSaveExitMultiplier;
+    const previousSaveMode = saveForNextProductMode;
+    if (saveForNextProductMode) {
+      saveForNextProductMode = !shouldExitSaveMode;
+    } else {
+      saveForNextProductMode = shouldEnterSaveMode;
+    }
+    ns.write(corporationSaveModeFile, saveForNextProductMode ? '1' : '0', 'w');
+    if (saveForNextProductMode && !previousSaveMode) {
+      ns.print('Entering save-for-product mode. Clearing purchase orders to reduce hidden spending...');
+      await clearPurchaseOrders(ns, true);
+    }
+    if (!saveForNextProductMode && previousSaveMode) {
+      ns.print('Leaving save-for-product mode.');
+    }
+    const prioritizeProductCreation = !saveForNextProductMode && corpLoop.funds >= requiredProductDevelopmentBudget;
 
     if (!useAdvancedStrategy) {
       await buyResearchWithStandardStrategy();
-    } else {
+    } else if (useAdvancedStrategy) {
       await buyResearchWithAdvancedStrategy();
     }
 
@@ -939,7 +1089,7 @@ async function improveAllDivisions(): Promise<void> {
         NS['corporation']['getDivision']
       >
     ).awareness;
-    if (primaryDivisionAware !== Number.MAX_VALUE) {
+    if (primaryDivisionAware !== Number.MAX_VALUE && !saveForNextProductMode && !prioritizeProductCreation) {
       // Buy Wilson ASAP if we can afford it with the last cycle's profit. Budget for Wilson and Advert is just part of
       // current funds, it's usually too low for our benchmark to calculate the optimal combination. The benchmark is
       // most suitable for big-budget situation, like after accepting investment offer.
@@ -949,8 +1099,9 @@ async function improveAllDivisions(): Promise<void> {
         UpgradeName.WILSON_ANALYTICS,
       )) as number;
       const maxWilsonLevel = getMaxAffordableUpgradeLevel(UpgradeName.WILSON_ANALYTICS, currentWilsonLevel, profit);
-      if (maxWilsonLevel > currentWilsonLevel) {
-        await buyUpgrade(ns, UpgradeName.WILSON_ANALYTICS, maxWilsonLevel);
+      const cappedWilsonLevel = Math.min(maxWilsonLevel, getConfiguredWilsonCap());
+      if (cappedWilsonLevel > currentWilsonLevel) {
+        await buyUpgrade(ns, UpgradeName.WILSON_ANALYTICS, cappedWilsonLevel);
       }
 
       // Prioritize Advert
@@ -970,8 +1121,13 @@ async function improveAllDivisions(): Promise<void> {
       }
     }
 
-    const totalFunds = corpLoop.funds - reservedFunds;
-    let availableFunds = totalFunds;
+    const corpAfterSpending = (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<
+      NS['corporation']['getCorporation']
+    >;
+    const totalFunds = Math.max(corpAfterSpending.funds - reservedFunds, 0);
+    // Keep enough funds to create the next product, otherwise upgrade spending can starve product progression.
+    const productBudgetReserve = Math.min(requiredProductDevelopmentBudget, totalFunds);
+    let availableFunds = Math.max(totalFunds - productBudgetReserve, 0);
 
     // In round 3 and 4, we only develop up to maxNumberOfProducts
     let maxNumberOfProducts = maxNumberOfProductsInRound3;
@@ -1027,16 +1183,28 @@ async function improveAllDivisions(): Promise<void> {
         }
         if (allProductsAreFinished) {
           ns.print('All products finished, developing new product before accepting offer...');
-          const productDevelopmentBudget = totalFunds * 0.01;
-          const newProductName = await developNewProduct(
-            ns,
-            primaryProductDivisionName,
-            mainProductDevelopmentCity,
-            productDevelopmentBudget,
+          const productDevelopmentBudget = Math.max(totalFunds * 0.9, requiredProductDevelopmentBudget);
+          const fundsForProductAttempt = Math.max(
+            ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>).funds -
+              reservedFunds,
+            0,
           );
-          if (newProductName) {
-            await corporationEventLogger.generateNewProductEvent(ns, primaryProductDivisionName);
-            availableFunds -= productDevelopmentBudget;
+          if (fundsForProductAttempt >= productDevelopmentBudget) {
+            const newProductName = await developNewProduct(
+              ns,
+              primaryProductDivisionName,
+              mainProductDevelopmentCity,
+              productDevelopmentBudget,
+            );
+            if (newProductName) {
+              await corporationEventLogger.generateNewProductEvent(ns, primaryProductDivisionName);
+              availableFunds -= productDevelopmentBudget;
+            }
+          } else {
+            ns.print(
+              `Deferring product creation while saving funds: ` +
+                `${ns.formatNumber(fundsForProductAttempt)} / ${ns.formatNumber(productDevelopmentBudget)}.`,
+            );
           }
 
           ns.print('Setting sell orders for finished products...');
@@ -1084,22 +1252,30 @@ async function improveAllDivisions(): Promise<void> {
 
     // Skip developing new product if we are at the near end of exponential phase
     if (profit <= 1e40 || availableFunds >= 1e72) {
-      let productDevelopmentBudget = totalFunds * 0.01;
-      // Make sure that we use at least 1e72 for productDevelopmentBudget after exponential phase
-      if (availableFunds >= 1e72) {
-        productDevelopmentBudget = Math.max(productDevelopmentBudget, 1e72);
-      }
-      const newProductName = await developNewProduct(
-        ns,
-        primaryProductDivisionName,
-        mainProductDevelopmentCity,
-        productDevelopmentBudget,
+      const productDevelopmentBudget = Math.max(totalFunds * 0.9, requiredProductDevelopmentBudget);
+      const fundsForProductAttempt = Math.max(
+        ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>).funds -
+          reservedFunds,
+        0,
       );
-      if (newProductName) {
-        ns.print(`Developing new product: ${newProductName}`);
-        console.log(`Develop ${newProductName}`);
-        await corporationEventLogger.generateNewProductEvent(ns, primaryProductDivisionName);
-        availableFunds -= productDevelopmentBudget;
+      if (fundsForProductAttempt >= productDevelopmentBudget) {
+        const newProductName = await developNewProduct(
+          ns,
+          primaryProductDivisionName,
+          mainProductDevelopmentCity,
+          productDevelopmentBudget,
+        );
+        if (newProductName) {
+          ns.print(`Developing new product: ${newProductName}`);
+          console.log(`Develop ${newProductName}`);
+          await corporationEventLogger.generateNewProductEvent(ns, primaryProductDivisionName);
+          availableFunds -= productDevelopmentBudget;
+        }
+      } else {
+        ns.print(
+          `Deferring product creation while saving funds: ` +
+            `${ns.formatNumber(fundsForProductAttempt)} / ${ns.formatNumber(productDevelopmentBudget)}.`,
+        );
       }
     } else {
       const productsElse = (
@@ -1132,9 +1308,21 @@ async function improveAllDivisions(): Promise<void> {
           NS['corporation']['getDivision']
         >
       ).lastCycleRevenue > 0;
-    const budgetForTobaccoDivision = totalFunds * 0.9;
+    const isSavingForNextProduct = saveForNextProductMode;
+    if (isSavingForNextProduct) {
+      ns.print(
+        `Saving funds for next product: ${ns.formatNumber(corpLoop.funds)} / ` +
+          `${ns.formatNumber(requiredProductDevelopmentBudget)}.`,
+      );
+      ns.print(
+        `Save-mode diagnostics: currentFunds=${ns.formatNumber(corpAfterSpending.funds)}, ` +
+          `reservedFunds=${ns.formatNumber(reservedFunds)}, spendable=${ns.formatNumber(totalFunds)}.`,
+      );
+    }
+    const budgetForTobaccoDivision = availableFunds * 0.9;
     if (
       tobaccoHasRevenue &&
+      !isSavingForNextProduct &&
       (cycleCount % 5 === 0 || (await needToUpgradeDivision(primaryProductDivisionName, budgetForTobaccoDivision)))
     ) {
       availableFunds -= budgetForTobaccoDivision;
@@ -1205,6 +1393,7 @@ async function improveAllDivisions(): Promise<void> {
     );
     if (
       tobaccoHasRevenue &&
+      !isSavingForNextProduct &&
       (cycleCount % 10 === 0 ||
         (await needToUpgradeDivision(DivisionName.AGRICULTURE, budgetForAgricultureDivision))) &&
       !pendingImprovingSupportDivisions.has(DivisionName.AGRICULTURE)
@@ -1217,6 +1406,7 @@ async function improveAllDivisions(): Promise<void> {
     );
     if (
       tobaccoHasRevenue &&
+      !isSavingForNextProduct &&
       (cycleCount % 15 === 0 || (await needToUpgradeDivision(DivisionName.CHEMICAL, budgetForChemicalDivision))) &&
       !pendingImprovingSupportDivisions.has(DivisionName.CHEMICAL)
     ) {
@@ -1247,7 +1437,9 @@ async function improveAllDivisions(): Promise<void> {
       console.debug(`plants ratio: ${producedPlants / consumedPlants}`);
     }
 
-    await buyTeaAndThrowPartyForAllDivisions(ns);
+    if (!isSavingForNextProduct) {
+      await buyTeaAndThrowPartyForAllDivisions(ns);
+    }
 
     await ensureSellOrdersForFinishedProducts(primaryProductDivisionName);
 
@@ -1277,6 +1469,64 @@ async function needToUpgradeDivision(divisionName: string, budget: number): Prom
     );
   }
   return needToUpgrade;
+}
+
+async function ensureOfficeBudgetForMinimumSize(
+  divisionName: string,
+  city: CityName,
+  currentOfficeSize: number,
+  minOfficeSize: number,
+  officeBudget: number,
+): Promise<number> {
+  if (currentOfficeSize >= minOfficeSize) {
+    return officeBudget;
+  }
+  const minimumRequiredBudget = getOfficeUpgradeCost(currentOfficeSize, minOfficeSize);
+  if (officeBudget >= minimumRequiredBudget) {
+    return officeBudget;
+  }
+
+  ns.print(
+    `Office budget below minimum for ${divisionName}/${city}. ` +
+      `Need ${ns.formatNumber(minimumRequiredBudget)}, have ${ns.formatNumber(officeBudget)}. Waiting for funds...`,
+  );
+  const maxWaitCycles = 20;
+  let waited = 0;
+  while (waited < maxWaitCycles) {
+    const funds = ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>)
+      .funds;
+    if (funds >= minimumRequiredBudget) {
+      break;
+    }
+    waited += 10;
+    if (waited % 50 === 0) {
+      ns.print(
+        `Waiting office bootstrap funds for ${divisionName}/${city}: ` +
+          `${ns.formatNumber(funds)} / ${ns.formatNumber(minimumRequiredBudget)} (${waited}/${maxWaitCycles} cycles)`,
+      );
+    }
+    await waitForNumberOfCycles(ns, 10);
+  }
+
+  const fundsAfterWait = (
+    (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>
+  ).funds;
+  if (fundsAfterWait < minimumRequiredBudget) {
+    ns.print(
+      `WARNING: Office bootstrap still unaffordable for ${divisionName}/${city} after waiting. ` +
+        `Proceeding without extra office budget.`,
+    );
+    return officeBudget;
+  }
+  const cappedByFunds = fundsAfterWait * 0.9;
+  const effectiveBudget = Math.max(officeBudget, Math.min(minimumRequiredBudget, cappedByFunds));
+  if (effectiveBudget > officeBudget) {
+    ns.print(
+      `Temporarily increasing office budget for ${divisionName}/${city}: ` +
+        `${ns.formatNumber(officeBudget)} -> ${ns.formatNumber(effectiveBudget)}`,
+    );
+  }
+  return effectiveBudget;
 }
 
 async function getBalancingModifierForProfitProgress(): Promise<BalancingModifierForProfitProgress> {
@@ -1429,7 +1679,7 @@ async function buyResearchWithStandardStrategy(): Promise<void> {
   const brOffer = (await Do(ns, 'ns.corporation.getInvestmentOffer')) as ReturnType<
     NS['corporation']['getInvestmentOffer']
   >;
-  if (brOffer.round <= 2) {
+  if (brOffer.round < 4) {
     return;
   }
   const buyResearches = async (divisionName: string) => {
@@ -1440,13 +1690,6 @@ async function buyResearchWithStandardStrategy(): Promise<void> {
       researchPriorities = researchPrioritiesForProductDivision;
     }
     for (const researchName of researchPriorities) {
-      // Only buy R&D Laboratory in round 4
-      const offerInner = (await Do(ns, 'ns.corporation.getInvestmentOffer')) as ReturnType<
-        NS['corporation']['getInvestmentOffer']
-      >;
-      if (offerInner.round === 4 && researchName !== ResearchName.HI_TECH_RND_LABORATORY) {
-        break;
-      }
       if ((await Do(ns, 'ns.corporation.hasResearched', divisionName, researchName)) as boolean) {
         continue;
       }
@@ -1566,12 +1809,21 @@ async function improveSupportDivision(
   const office = (await Do(ns, 'ns.corporation.getOffice', divisionName, city)) as ReturnType<
     NS['corporation']['getOffice']
   >;
-  const maxOfficeSize = getMaxAffordableOfficeSize(office.size, officeBudget);
+  const effectiveOfficeBudget = await ensureOfficeBudgetForMinimumSize(
+    divisionName,
+    city,
+    office.size,
+    6,
+    officeBudget,
+  );
+  const maxOfficeSize = getMaxAffordableOfficeSize(office.size, effectiveOfficeBudget);
   logger.log(`City: ${city}. currentOfficeSize: ${office.size}, maxOfficeSize: ${maxOfficeSize}`);
   if (maxOfficeSize < 6) {
-    throw new Error(
-      `Budget for office is too low. Division: ${divisionName}. Office's budget: ${ns.formatNumber(officeBudget)}`,
+    ns.print(
+      `WARNING: Budget for office is too low. Skipping main office upgrade. ` +
+        `Division: ${divisionName}. Office budget: ${ns.formatNumber(officeBudget)}`,
     );
+    return;
   }
   const rndEmployee = Math.min(Math.floor(maxOfficeSize * 0.2), maxOfficeSize - 3);
   const nonRnDEmployees = maxOfficeSize - rndEmployee;
@@ -1731,9 +1983,10 @@ async function improveProductDivisionWilsonAdvert(
   const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
     NS['corporation']['getDivision']
   >;
+  const currentWilsonLevel = (await Do(ns, 'ns.corporation.getUpgradeLevel', UpgradeName.WILSON_ANALYTICS)) as number;
   const dataArray = benchmark.optimizeWilsonAndAdvert(
     industryData,
-    (await Do(ns, 'ns.corporation.getUpgradeLevel', UpgradeName.WILSON_ANALYTICS)) as number,
+    currentWilsonLevel,
     (await Do(ns, 'ns.corporation.getHireAdVertCount', divisionName)) as number,
     division.awareness,
     division.popularity,
@@ -1747,7 +2000,10 @@ async function improveProductDivisionWilsonAdvert(
   const optimalData = dataArray[dataArray.length - 1];
   logger.log(`wilsonAdvert: ${JSON.stringify(optimalData)}`);
   if (!dryRun) {
-    await buyUpgrade(ns, UpgradeName.WILSON_ANALYTICS, optimalData.wilsonLevel);
+    const cappedWilsonLevel = Math.min(optimalData.wilsonLevel, getConfiguredWilsonCap());
+    if (cappedWilsonLevel > currentWilsonLevel) {
+      await buyUpgrade(ns, UpgradeName.WILSON_ANALYTICS, cappedWilsonLevel);
+    }
     await buyAdvert(ns, divisionName, optimalData.advertLevel);
   }
 }
@@ -1934,11 +2190,20 @@ async function improveProductDivisionSupportOffices(
     const office = (await Do(ns, 'ns.corporation.getOffice', divisionName, city)) as ReturnType<
       NS['corporation']['getOffice']
     >;
-    const maxOfficeSize = getMaxAffordableOfficeSize(office.size, budgetForEachOffice);
+    const effectiveBudgetForOffice = await ensureOfficeBudgetForMinimumSize(
+      divisionName,
+      city,
+      office.size,
+      5,
+      budgetForEachOffice,
+    );
+    const maxOfficeSize = getMaxAffordableOfficeSize(office.size, effectiveBudgetForOffice);
     if (maxOfficeSize < 5) {
-      throw new Error(
-        `Budget for office is too low. Division: ${divisionName}. Office's budget: ${ns.formatNumber(budgetForEachOffice)}`,
+      ns.print(
+        `WARNING: Budget for office is too low. Skipping support office upgrade. ` +
+          `Division: ${divisionName}, city: ${city}. Office budget: ${ns.formatNumber(budgetForEachOffice)}`,
       );
+      continue;
     }
     if (maxOfficeSize < office.size) {
       continue;
@@ -2172,9 +2437,9 @@ async function test(): Promise<void> {}
 export async function main(nsContext: NS): Promise<void> {
   init(nsContext);
 
-  if (ns.getResetInfo().currentNode !== 3) {
-    throw new Error('This script is specialized for BN3');
-  }
+  // if (ns.getResetInfo().currentNode !== 3) {
+  //   throw new Error('This script is specialized for BN3');
+  // }
 
   config = ns.flags(defaultConfig);
   if (config.help === true) {
@@ -2183,7 +2448,7 @@ export async function main(nsContext: NS): Promise<void> {
   }
 
   ns.disableLog('ALL');
-  // ns.ui.openTail();
+  ns.ui.openTail();
   ns.clearLog();
 
   if (!((await Do(ns, 'ns.corporation.hasCorporation')) as boolean)) {
@@ -2197,6 +2462,7 @@ export async function main(nsContext: NS): Promise<void> {
   // Clear purchase order of boost materials when script exits
   nsx.addAtExitCallback(() => {
     void clearPurchaseOrders(ns, false);
+    ns.write(corporationSaveModeFile, '0', 'w');
   });
 
   agricultureIndustryData = (await Do(

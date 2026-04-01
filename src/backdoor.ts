@@ -40,12 +40,12 @@ export async function main(ns: NS): Promise<void> {
 
       if (server.backdoorInstalled) continue;
       if (!server.hasAdminRights) {
-        openPorts(ns, server);
         try {
           ns.nuke(hostname);
         } catch (e) {
           ns.print(`nuke failed on ${hostname}: ${e}`);
         }
+        openPorts(ns, server);
         server = ns.getServer(hostname);
       }
       if (!server.hasAdminRights) {
@@ -69,10 +69,26 @@ export async function main(ns: NS): Promise<void> {
         for (const hop of path) {
           await Do(ns, 'ns.singularity.connect', hop);
         }
-        Do(ns, 'ns.singularity.installBackdoor').then(
-          () => ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`),
-          (e) => ns.tprint(`WARN: Backdoor failed on ${hostname}: ${e}`),
-        );
+        server = ns.getServer(hostname);
+        if (!server.hasAdminRights) {
+          openPorts(ns, server);
+          try {
+            ns.nuke(hostname);
+          } catch (e) {
+            ns.print(`nuke failed on ${hostname}: ${e}`);
+          }
+          server = ns.getServer(hostname);
+        }
+        if (!server.hasAdminRights) {
+          ns.tprint(`WARN: ${hostname}: no root before backdoor; skipping`);
+        } else {
+          try {
+            await Do(ns, 'ns.singularity.installBackdoor');
+            ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`);
+          } catch (e) {
+            ns.tprint(`WARN: Backdoor failed on ${hostname}: ${e}`);
+          }
+        }
       } catch (e) {
         ns.tprint(`WARN: Failed to navigate to ${hostname}: ${e}`);
       }

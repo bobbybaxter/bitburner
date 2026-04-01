@@ -85,9 +85,9 @@ interface EmployeeRatioData {
 
 class CorporationEventLogger {
   constructor() {
-    if (!globalThis.corporationEventCycle) {
-      if (isTestingToolsAvailable() && globalThis.Player.corporation) {
-        globalThis.corporationEventCycle = globalThis.Player.corporation.cycleCount;
+    if (!Number.isFinite(globalThis.corporationEventCycle)) {
+      if (isTestingToolsAvailable() && globalThis.Player?.corporation) {
+        globalThis.corporationEventCycle = globalThis.Player.corporation.cycleCount ?? 0;
       } else {
         globalThis.corporationEventCycle = 0;
       }
@@ -101,7 +101,7 @@ class CorporationEventLogger {
   }
 
   get cycle(): number {
-    return globalThis.corporationEventCycle;
+    return globalThis.corporationEventCycle ?? 0;
   }
 
   set cycle(value: number) {
@@ -161,7 +161,10 @@ class CorporationEventLogger {
         warehouses: [],
         offices: [],
       };
-      for (const city of cities) {
+      for (const city of division.cities) {
+        if (!(await Do(ns, 'ns.corporation.hasWarehouse', divisionName, city))) {
+          continue;
+        }
         const warehouse = (await Do(ns, 'ns.corporation.getWarehouse', divisionName, city)) as ReturnType<
           NS['corporation']['getWarehouse']
         >;

@@ -69,7 +69,11 @@ export const researchPrioritiesForSupportDivision: ResearchName[] = [
   ResearchName.AUTO_DRUG,
   ResearchName.GO_JUICE,
   ResearchName.CPH4_INJECT,
+  ResearchName.AUTO_BREW,
+  ResearchName.AUTO_PARTY,
 
+  ResearchName.MARKET_TA_1,
+  ResearchName.MARKET_TA_2,
   ResearchName.SELF_CORRECTING_ASSEMBLERS,
   ResearchName.DRONES,
   ResearchName.DRONES_ASSEMBLY,
@@ -79,9 +83,8 @@ export const researchPrioritiesForSupportDivision: ResearchName[] = [
 export const researchPrioritiesForProductDivision: ResearchName[] = [
   ...researchPrioritiesForSupportDivision,
   ResearchName.UPGRADE_FULCRUM,
-  // Do not buy
-  // ResearchName.UPGRADE_CAPACITY_1,
-  // ResearchName.UPGRADE_CAPACITY_2
+  ResearchName.UPGRADE_CAPACITY_1,
+  ResearchName.UPGRADE_CAPACITY_2,
 ];
 
 export const exportString = '(IPROD+IINV/10)*(-1)';
@@ -179,7 +182,10 @@ export async function loopAllDivisionsAndCities(
     if (division.startsWith(dummyDivisionNamePrefix)) {
       continue;
     }
-    for (const city of cities) {
+    const divisionData = (await Do(ns, 'ns.corporation.getDivision', division)) as ReturnType<
+      NS['corporation']['getDivision']
+    >;
+    for (const city of divisionData.cities) {
       await callback(division, city);
     }
   }
@@ -261,6 +267,28 @@ export async function buyAdvert(ns: NS, divisionName: string, targetLevel: numbe
 }
 
 export async function buyUnlock(ns: NS, unlockName: CorpUnlockName): Promise<void> {
+  if ((await Do(ns, 'ns.corporation.hasUnlock', unlockName)) as boolean) {
+    return;
+  }
+  const unlockCost = (await Do(ns, 'ns.corporation.getUnlockCost', unlockName)) as number;
+  let cyclesWaited = 0;
+  while (true) {
+    const funds = ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>)
+      .funds;
+    if (funds >= unlockCost) {
+      break;
+    }
+    cyclesWaited += 10;
+    if (cyclesWaited % 50 === 0) {
+      ns.print(
+        `Waiting to buy ${unlockName}: ${ns.formatNumber(funds)} / ${ns.formatNumber(unlockCost)} ` +
+          `(${cyclesWaited} cycles)`,
+      );
+    }
+    await waitForNumberOfCycles(ns, 10);
+  }
+
+  // Another script might have purchased it while we waited.
   if ((await Do(ns, 'ns.corporation.hasUnlock', unlockName)) as boolean) {
     return;
   }
@@ -571,6 +599,7 @@ export async function upgradeOffices(ns: NS, divisionName: string, officeSetups:
           officeSetup.city,
           officeSetup.size - office.size,
         );
+        ns.print(`Upgraded office ${officeSetup.city} to ${officeSetup.size} slots.`);
       }
       while (
         (await Do(
@@ -590,8 +619,8 @@ export async function upgradeOffices(ns: NS, divisionName: string, officeSetups:
   }
   if (successfulSetups.length > 0) {
     await assignJobs(ns, divisionName, successfulSetups);
+    ns.print(`Finished upgrading offices for ${divisionName}`);
   }
-  ns.print(`Upgrade offices completed`);
 }
 
 export async function clearPurchaseOrders(ns: NS, clearInputMaterialOrders: boolean = true): Promise<void> {
@@ -793,6 +822,30 @@ export async function createDivision(
       default:
         throw new Error(`Invalid division name: ${divisionName}`);
     }
+
+    const industryData = (await Do(ns, 'ns.corporation.getIndustryData', industryType)) as CorpIndustryData;
+    const expandIndustryCost = industryData.startingCost;
+    let cyclesWaited = 0;
+    while (true) {
+      const funds = ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>)
+        .funds;
+      if (funds >= expandIndustryCost) {
+        break;
+      }
+      cyclesWaited += 10;
+      if (cyclesWaited % 50 === 0) {
+        ns.print(
+          `Waiting to create ${divisionName}: ${ns.formatNumber(funds)} / ${ns.formatNumber(expandIndustryCost)} ` +
+            `(${cyclesWaited} cycles)`,
+        );
+      }
+      await waitForNumberOfCycles(ns, 10);
+    }
+
+    // Another script might have created the division while we waited.
+    if (await hasDivision(ns, divisionName)) {
+      return (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<NS['corporation']['getDivision']>;
+    }
     await Do(ns, 'ns.corporation.expandIndustry', industryType, divisionName);
   }
   let division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
@@ -977,6 +1030,9 @@ export async function setSmartSupplyData(ns: NS): Promise<void> {
     const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
       NS['corporation']['getDivision']
     >;
+    if (!(await Do(ns, 'ns.corporation.hasWarehouse', division.name, city))) {
+      return;
+    }
     const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
     const warehouse = (await Do(ns, 'ns.corporation.getWarehouse', division.name, city)) as ReturnType<
       NS['corporation']['getWarehouse']
@@ -1094,6 +1150,9 @@ export async function buyOptimalAmountOfInputMaterials(
     const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
       NS['corporation']['getDivision']
     >;
+    if (!(await Do(ns, 'ns.corporation.hasWarehouse', division.name, city))) {
+      return;
+    }
     const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
     const office = (await Do(ns, 'ns.corporation.getOffice', division.name, city)) as ReturnType<
       NS['corporation']['getOffice']
@@ -1312,6 +1371,45 @@ export async function generateNextProductName(
   return `${divisionName}-${(Math.max(...productIdArray) + 1).toString().padStart(5, '0')}-${productDevelopmentBudget.toExponential(5)}`;
 }
 
+function parseProductBudgetFromName(productName: string): number | null {
+  const lastHyphenIndex = productName.lastIndexOf('-');
+  if (lastHyphenIndex < 0 || lastHyphenIndex === productName.length - 1) {
+    return null;
+  }
+  const budget = Number(productName.slice(lastHyphenIndex + 1));
+  if (!Number.isFinite(budget) || budget <= 0) {
+    return null;
+  }
+  return budget;
+}
+
+async function getBestKnownProductBudget(
+  ns: NS,
+  divisionName: string,
+  mainProductDevelopmentCity: CityName,
+  products: string[],
+): Promise<number> {
+  let bestBudget = 0;
+  for (const productName of products) {
+    const parsedBudget = parseProductBudgetFromName(productName);
+    if (parsedBudget !== null) {
+      bestBudget = Math.max(bestBudget, parsedBudget);
+      continue;
+    }
+    // Fallback for legacy products whose names do not encode budget.
+    const product = (await Do(
+      ns,
+      'ns.corporation.getProduct',
+      divisionName,
+      mainProductDevelopmentCity,
+      productName,
+    )) as Product;
+    const productBudget = product.designInvestment + product.advertisingInvestment;
+    bestBudget = Math.max(bestBudget, productBudget);
+  }
+  return bestBudget;
+}
+
 async function getMaxNumberOfProducts(ns: NS, divisionName: string): Promise<number> {
   let maxNumberOfProducts = 3;
   if ((await Do(ns, 'ns.corporation.hasResearched', divisionName, ResearchName.UPGRADE_CAPACITY_1)) as boolean) {
@@ -1329,6 +1427,17 @@ export async function developNewProduct(
   mainProductDevelopmentCity: CityName,
   productDevelopmentBudget: number,
 ): Promise<string | null> {
+  const currentFunds = (
+    (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>
+  ).funds;
+  if (productDevelopmentBudget > currentFunds) {
+    ns.print(
+      `Skip developing new product: budget ${ns.formatNumber(productDevelopmentBudget)} ` +
+        `> available funds ${ns.formatNumber(currentFunds)}.`,
+    );
+    return null;
+  }
+
   const products = (
     (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<NS['corporation']['getDivision']>
   ).products;
@@ -1365,6 +1474,7 @@ export async function developNewProduct(
 
   // Do nothing if there is any developing product
   if (hasDevelopingProduct) {
+    ns.print(`Skip developing new product: ${divisionName} already has a product in development.`);
     return null;
   }
   if (!bestProduct && products.length > 0) {
@@ -1373,14 +1483,15 @@ export async function developNewProduct(
   if (!worstProduct && products.length > 0) {
     throw new Error('Cannot find the worst product to discontinue');
   }
-  // New product's budget should be greater than X% of current best product's budget.
-  if (bestProduct) {
-    const bestProductBudget = bestProduct.designInvestment + bestProduct.advertisingInvestment;
-    if (productDevelopmentBudget < bestProductBudget * 0.5 && products.length >= 3) {
-      const warningMessage =
-        `Budget for new product is too low: ${ns.formatNumber(productDevelopmentBudget)}. ` +
-        `Current best product's budget: ${ns.formatNumber(bestProductBudget)}`;
-      showWarning(ns, warningMessage);
+  if (products.length > 0) {
+    const bestKnownBudget = await getBestKnownProductBudget(ns, divisionName, mainProductDevelopmentCity, products);
+    const minRequiredBudget = bestKnownBudget * 1.0102;
+    if (productDevelopmentBudget < minRequiredBudget) {
+      ns.print(
+        `Skip developing new product: budget ${ns.formatNumber(productDevelopmentBudget)} ` +
+          `< required ${ns.formatNumber(minRequiredBudget)} (1.02% above best budget ${ns.formatNumber(bestKnownBudget)}).`,
+      );
+      return null;
     }
   }
 
@@ -1879,7 +1990,8 @@ export async function buyBoostMaterials(ns: NS, division: Division): Promise<voi
   const funds = ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>)
     .funds;
   if (funds < 10e9) {
-    throw new Error(`Funds is too small to buy boost materials. Funds: ${ns.formatNumber(funds)}.`);
+    ns.print(`WARN: Skipping boost materials purchase — funds too low (${ns.formatNumber(funds)})`);
+    return;
   }
   const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
   let reservedSpaceRatio = 0.2;
@@ -1972,10 +2084,31 @@ export async function getProductMarketPrice(
 export async function createDummyDivisions(ns: NS, numberOfDivisions: number): Promise<void> {
   const divisions = ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>)
     .divisions;
+  const restaurantIndustryData = (await Do(
+    ns,
+    'ns.corporation.getIndustryData',
+    IndustryType.RESTAURANT,
+  )) as CorpIndustryData;
   for (let i = 0; i < numberOfDivisions; i++) {
     const dummyDivisionName = dummyDivisionNamePrefix + i.toString().padStart(2, '0');
     if (divisions.includes(dummyDivisionName)) {
       continue;
+    }
+    let cyclesWaited = 0;
+    while (true) {
+      const funds = ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>)
+        .funds;
+      if (funds >= restaurantIndustryData.startingCost) {
+        break;
+      }
+      cyclesWaited += 10;
+      if (cyclesWaited % 50 === 0) {
+        ns.print(
+          `Waiting to create ${dummyDivisionName}: ${ns.formatNumber(funds)} / ` +
+            `${ns.formatNumber(restaurantIndustryData.startingCost)} (${cyclesWaited} cycles)`,
+        );
+      }
+      await waitForNumberOfCycles(ns, 10);
     }
     await Do(ns, 'ns.corporation.expandIndustry', IndustryType.RESTAURANT, dummyDivisionName);
     const division = (await Do(ns, 'ns.corporation.getDivision', dummyDivisionName)) as ReturnType<

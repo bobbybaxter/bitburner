@@ -18,8 +18,142 @@ let reload = false;
 let runCorpRound = false;
 let runCorpTest = false;
 
+const STOCK_HUD_ROW_ATTR = 'data-custom-hud-stock-row';
+const KARMA_HUD_ROW_ATTR = 'data-custom-hud-karma-row';
+
+/** Clone a vanilla overview row (same pattern as stockmaster `helpers/stockmaster/hud.ts` `initializeHud`). */
+function cloneOverviewStatRow(doc: Document): { row: HTMLElement; labelEl: HTMLElement; valueEl: HTMLElement } {
+  const overviewHook = doc.getElementById('overview-extra-hook-0');
+  if (!overviewHook?.parentElement?.parentElement) {
+    throw new Error('HUD overview-extra-hook not found');
+  }
+  const templateRow = overviewHook.parentElement.parentElement as HTMLElement;
+  const row = templateRow.cloneNode(true) as HTMLElement;
+  row.querySelectorAll('p > p').forEach((el) => (el.parentElement as HTMLElement).removeChild(el));
+  const ps = [...row.querySelectorAll('p')] as HTMLElement[];
+  if (ps.length < 2) {
+    throw new Error('Overview row clone did not yield two cells');
+  }
+  ps.forEach((el) => el.removeAttribute('id'));
+  const [labelEl, valueEl] = ps;
+  labelEl.innerHTML = '';
+  valueEl.innerHTML = '';
+  return { row, labelEl, valueEl };
+}
+
+function findMoneyOverviewRow(doc: Document): HTMLElement | null {
+  const hook = doc.getElementById('overview-extra-hook-0');
+  const hookRow = hook?.parentElement?.parentElement ?? null;
+  const container = hookRow?.parentElement ?? null;
+  if (!container) return null;
+  for (const child of container.children) {
+    if (!(child instanceof HTMLElement)) continue;
+    if (child === hookRow) continue;
+    const firstP = child.querySelector('p');
+    const text = (firstP?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    if (/^money$/i.test(text)) return child;
+  }
+  return null;
+}
+
+function findIntOverviewRow(doc: Document): HTMLElement | null {
+  const hook = doc.getElementById('overview-extra-hook-0');
+  const hookRow = hook?.parentElement?.parentElement ?? null;
+  const container = hookRow?.parentElement ?? null;
+  if (!container) return null;
+  for (const child of container.children) {
+    if (!(child instanceof HTMLElement)) continue;
+    if (child === hookRow) continue;
+    const firstP = child.querySelector('p');
+    const text = (firstP?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    if (/^int(elligence)?$/i.test(text)) return child;
+  }
+  return null;
+}
+
+function removeStockHudRows(doc: Document): void {
+  doc.querySelectorAll(`[${STOCK_HUD_ROW_ATTR}]`).forEach((el) => el.remove());
+}
+
+function removeKarmaHudRow(doc: Document): void {
+  doc.querySelectorAll(`[${KARMA_HUD_ROW_ATTR}]`).forEach((el) => el.remove());
+}
+
+/** Karma stat row directly under the vanilla Int overview row. */
+function mountKarmaHudRowUnderInt(doc: Document): void {
+  removeKarmaHudRow(doc);
+  const intRow = findIntOverviewRow(doc);
+  if (!intRow) return;
+  const { row, labelEl, valueEl } = cloneOverviewStatRow(doc);
+  row.setAttribute(KARMA_HUD_ROW_ATTR, '');
+  labelEl.innerText = 'Karma';
+  valueEl.id = 'hud-karma';
+  valueEl.innerText = '0';
+  intRow.insertAdjacentElement('afterend', row);
+}
+
+/**
+ * StockWorth + Stockmaster as real overview rows directly under Money (stockmaster `hud.ts` placement style).
+ */
+function mountStockHudRowsUnderMoney(doc: Document): void {
+  removeStockHudRows(doc);
+  const hook = doc.getElementById('overview-extra-hook-0');
+  const hookRow = hook?.parentElement?.parentElement ?? null;
+  const container = hookRow?.parentElement ?? null;
+  if (!hookRow || !container) return;
+
+  const moneyRow = findMoneyOverviewRow(doc);
+  const insertAfter = (anchor: HTMLElement, row: HTMLElement) => {
+    anchor.insertAdjacentElement('afterend', row);
+  };
+
+  const makeRow = (labelText: string, valueId: string, initialValue: string) => {
+    const { row, labelEl, valueEl } = cloneOverviewStatRow(doc);
+    row.setAttribute(STOCK_HUD_ROW_ATTR, '');
+    labelEl.innerText = labelText;
+    valueEl.id = valueId;
+    valueEl.innerText = initialValue;
+    return row;
+  };
+
+  const rowWorth = makeRow('StockWorth', 'hud-stock-worth', '0');
+  const rowMaster = makeRow('Stockmaster', 'hud-stockmaster-status', 'Offline');
+
+  if (moneyRow) {
+    insertAfter(moneyRow, rowWorth);
+    insertAfter(rowWorth, rowMaster);
+  } else {
+    container.insertBefore(rowMaster, hookRow);
+    container.insertBefore(rowWorth, rowMaster);
+  }
+}
+
 function rerun(ns: NS) {
   ns.spawn(ns.getScriptName(), { spawnDelay: 100 });
+}
+
+type RemoteApiGlobals = {
+  getRemoteFileApiConnectionStatus?: () => string;
+  isRemoteFileApiConnectionLive?: () => boolean;
+};
+
+function updateRemoteApiHudCell(hudRemoteApi: HTMLElement): void {
+  const g = globalThis as RemoteApiGlobals;
+  let label = '—';
+  if (typeof g.getRemoteFileApiConnectionStatus === 'function') {
+    try {
+      label = g.getRemoteFileApiConnectionStatus();
+    } catch {
+      label = 'err';
+    }
+  } else if (typeof g.isRemoteFileApiConnectionLive === 'function') {
+    try {
+      label = g.isRemoteFileApiConnectionLive() ? 'Online' : 'Offline';
+    } catch {
+      label = 'err';
+    }
+  }
+  hudRemoteApi.innerText = label;
 }
 
 function removeTestingTool() {
@@ -335,19 +469,23 @@ export async function main(nsContext: NS): Promise<void> {
   nsx.addAtExitCallback(() => {
     hook0.innerText = '';
     hook1.innerText = '';
+    removeStockHudRows(doc);
+    removeKarmaHudRow(doc);
     removeTestingTool();
   });
 
   const headers = [];
   const values = [];
 
+  headers.push('<div>RemoteAPI</div>');
+  values.push("<div id='hud-remote-api'>—</div>");
   headers.push('<div>ServerLoad</div>');
   values.push("<div id='hud-server-load'>0%</div>");
   headers.push('<div>Scripts</div>');
   values.push("<div id='hud-scripts-count'>0</div>");
+  mountKarmaHudRowUnderInt(doc);
   if (ns.stock.hasWSEAccount()) {
-    headers.push('<div>StockWorth</div>');
-    values.push("<div id='hud-stock-worth'>0</div>");
+    mountStockHudRowsUnderMoney(doc);
   }
   if (ns.corporation.hasCorporation()) {
     headers.push('<div>InvestmentOffer</div>');
@@ -383,6 +521,21 @@ export async function main(nsContext: NS): Promise<void> {
         `${((totalUsedRAMOfAllRunners / totalMaxRAMOfAllRunners) * 100).toFixed(2)}%`;
       doc.getElementById('hud-scripts-count')!.innerText = `${totalRunningScripts}`;
 
+      const hudRemoteApi = doc.getElementById('hud-remote-api');
+      if (hudRemoteApi === null) {
+        rerun(ns);
+        return;
+      }
+      updateRemoteApiHudCell(hudRemoteApi);
+
+      if (!doc.getElementById('hud-karma')) {
+        mountKarmaHudRowUnderInt(doc);
+      }
+      const hudKarma = doc.getElementById('hud-karma');
+      if (hudKarma !== null) {
+        hudKarma.innerText = ns.formatNumber(ns.getPlayer().karma);
+      }
+
       if (ns.stock.hasWSEAccount()) {
         const hudStockWorthValue = doc.getElementById('hud-stock-worth');
         if (hudStockWorthValue === null) {
@@ -390,7 +543,15 @@ export async function main(nsContext: NS): Promise<void> {
           return;
         }
         const stockStats = nsx.calculateStockStats();
-        hudStockWorthValue.innerText = ns.formatNumber(stockStats.currentWorth);
+        hudStockWorthValue.innerText = `$${ns.formatNumber(stockStats.currentWorth)}`;
+
+        const hudStockmasterStatus = doc.getElementById('hud-stockmaster-status');
+        if (hudStockmasterStatus === null) {
+          rerun(ns);
+          return;
+        }
+        const stockmasterOnHome = ns.ps('home').some((p) => p.filename === 'stockmaster.js');
+        hudStockmasterStatus.innerText = stockmasterOnHome ? 'Online' : 'Offline';
       }
 
       if (ns.corporation.hasCorporation()) {

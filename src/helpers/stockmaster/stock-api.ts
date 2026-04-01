@@ -62,9 +62,13 @@ export async function transactStock(
   numShares: number,
   action: 'buyStock' | 'buyShort' | 'sellStock' | 'sellShort',
 ): Promise<unknown> {
+  const n = Math.floor(Number(numShares));
+  if (!Number.isFinite(n) || n < 1) {
+    throw new Error(`transactStock(${action}): invalid share count (${String(numShares)})`);
+  }
   return await getNsDataThroughFile(ns, `ns.stock.${action}(ns.args[0], ns.args[1])`, `/Temp/stock-${action}.txt`, [
     sym,
-    numShares,
+    n,
   ]);
 }
 

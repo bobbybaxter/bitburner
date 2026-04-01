@@ -73,8 +73,18 @@ export class StockPosition {
 
   // Ticks needed at current expected return to recover the bid/ask spread loss.
   // Derived from compound interest: future = current * (1 + er)^n, solved for n.
+  // When absReturn is 0, log(1+er) is 0 → divide-by-zero NaN; when ask<=bid, log(ask/bid)<=0 — use a large sentinel.
   timeToCoverTheSpread(): number {
-    return Math.log(this.ask_price / this.bid_price) / Math.log(1 + this.absReturn());
+    const bid = this.bid_price;
+    const ask = this.ask_price;
+    if (!(bid > 0) || !(ask > 0) || ask <= bid) return 1e9;
+    const ar = this.absReturn();
+    const numer = Math.log(ask / bid);
+    if (!Number.isFinite(numer) || numer <= 0) return 1e9;
+    const denom = Math.log(1 + ar);
+    if (!(denom > 0) || !Number.isFinite(denom)) return 1e9;
+    const n = numer / denom;
+    return Number.isFinite(n) && n >= 0 ? n : 1e9;
   }
 
   blackoutWindow(): number {
