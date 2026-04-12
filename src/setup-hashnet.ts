@@ -1,6 +1,6 @@
 import { NS } from '@ns';
 import { art } from '/helpers/art';
-import { pickBestScoredHackTarget } from '/helpers/hack-target-score.js';
+import { rankHackTargetsByScore } from '/helpers/hack-target-score.js';
 import { hms } from '/helpers/hms';
 import { numPad } from '/helpers/num-pad';
 
@@ -34,6 +34,7 @@ export async function main(ns: NS) {
     rnodes: 231,
     cnodes: 231,
     cashelevel: 231,
+    companyfavor: 231,
   };
   function scanner(a: string[]) {
     const servers = new Set(a);
@@ -47,31 +48,20 @@ export async function main(ns: NS) {
   }
   const choices = scanner(['home']);
   choices.shift(); // removes home from list
-  let nodePurchases,
-    levelUpgrades,
-    ramUpgrades,
-    coreUpgrades,
-    cacheLvlUpgrades,
-    studyingImproved,
-    hashMoney,
-    trainingImproved,
-    hashCorpFund,
-    redMinSec,
-    incMaxMon,
-    hashCorpTech;
-  studyingImproved =
-    levelUpgrades =
-    ramUpgrades =
-    coreUpgrades =
-    cacheLvlUpgrades =
-    nodePurchases =
-    hashMoney =
-    trainingImproved =
-    redMinSec =
-    incMaxMon =
-    hashCorpTech =
-    hashCorpFund =
-      0;
+  let nodePurchases = 0;
+  let levelUpgrades = 0;
+  let ramUpgrades = 0;
+  let coreUpgrades = 0;
+  let cacheLvlUpgrades = 0;
+  let studyingImproved = 0;
+  let hashMoney = 0;
+  let trainingImproved = 0;
+  let hashCorpFund = 0;
+  let redMinSec = 0;
+  let incMaxMon = 0;
+  let hashCorpTech = 0;
+  let hashCompanyFavor = 0;
+
   const scriptStartTime = new Date();
   const hashStudyPerms = await ns.prompt('Use "Improve Studying" auto upgrade?');
   const hashGymPerms = await ns.prompt('Use "Improve Gym Training" auto upgrade?');
@@ -81,22 +71,61 @@ export async function main(ns: NS) {
   const hashCorpTechPerms = ns.corporation.hasCorporation()
     ? await ns.prompt('Use "Exchange for Corporation Research" auto upgrade?')
     : false;
+  const hashBladeburnerSpPerms = await ns.prompt('Use "Exchange for Bladeburner SP" auto upgrade?');
+  const hashBladeburnerRankPerms = await ns.prompt('Use "Exchange for Bladeburner Rank" auto upgrade?');
   const hashServerMinSecPerms = await ns.prompt('Use "Reduce Minimum Security" auto upgrade?');
   const hashServerIncMaxMon = await ns.prompt('Use "Increase Maximum Money" auto upgrade?');
   const targetChoices = ['all', ...choices];
+  const initialRankedTargets = rankHackTargetsByScore(ns, choices);
   const target =
     hashServerMinSecPerms || hashServerIncMaxMon
       ? await ns.prompt('Choose a target', { type: 'select', choices: targetChoices })
-      : pickBestScoredHackTarget(ns, choices);
+      : (initialRankedTargets[0] ?? 'n00dles');
+  const sellForMoneyRateChoices = ['10% (default)', '25%', '50%', '75%'] as const;
+  const sellForMoneyRateChoice = (await ns.prompt('Choose Sell for Money Rate', {
+    type: 'select',
+    choices: [...sellForMoneyRateChoices],
+  })) as (typeof sellForMoneyRateChoices)[number];
+  const sellForMoneyRateByChoice: Record<(typeof sellForMoneyRateChoices)[number], number> = {
+    '10% (default)': 0.1,
+    '25%': 0.25,
+    '50%': 0.5,
+    '75%': 0.75,
+  };
+  const hashCompanyFavorPerms = await ns.prompt('Use "Company Favor" auto upgrade?');
+  const hashCompanyFavorTargetChoices = [
+    'Bachman & Associates',
+    'ECorp',
+    'MegaCorp',
+    'KuaiGong International',
+    'Four Sigma',
+    'NWO',
+    'Blade Industries',
+    'OmniTek Incorporated',
+    'Clarke Incorporated',
+    'Fulcrum Technologies',
+  ];
+  const hashCompanyFavorTargetChoice = (await ns.prompt('Choose Company Favor Target', {
+    type: 'select',
+    choices: hashCompanyFavorTargetChoices,
+  })) as (typeof hashCompanyFavorTargetChoices)[number];
+  const hashCompanyFavorTarget = hashCompanyFavorTargetChoice ?? 'Bachman & Associates';
+  const sellForMoneyRate = sellForMoneyRateByChoice[sellForMoneyRateChoice] ?? 0.1;
+  const loopSleepMs = 100;
+  let sellForMoneyHashBudget = 0;
   const serverPerms = await ns.prompt('Auto upgrade Hacknet servers?');
   ns.ui.openTail();
+
   while (true) {
     ns.ui.resizeTail(375, 475);
     ns.print('clearing log......');
     ns.clearLog();
-    const resolvedTarget = target === 'all' ? pickBestScoredHackTarget(ns, choices) : (target as string);
-    const targetMinSec = ns.getServer(resolvedTarget).minDifficulty;
-    const targetMaxMon = ns.getServer(resolvedTarget).moneyMax;
+    const rankedTargets = target === 'all' ? rankHackTargetsByScore(ns, choices) : [target as string];
+    const resolvedMaxMoneyTarget = rankedTargets[0] ?? 'n00dles';
+    const resolvedMinSecTarget =
+      rankedTargets.find((hostname) => (ns.getServer(hostname)?.minDifficulty ?? 1) > 1) ?? resolvedMaxMoneyTarget;
+    const targetMinSec = ns.getServer(resolvedMinSecTarget).minDifficulty;
+    const targetMaxMon = ns.getServer(resolvedMaxMoneyTarget).moneyMax;
     ns.print(art('-------Script Stats--------', { color: colorPalette.titlebar }));
     ns.print(`Script start: ${art(scriptStartTime.toLocaleString(), { color: colorPalette.starttime })}`);
     const scriptCurrentTime = new Date();
@@ -148,45 +177,91 @@ export async function main(ns: NS) {
       ns.print(
         `Total Hashnet Production: ${art(ns.formatNumber(productionRate), { color: colorPalette.hashrate })} h / s`,
       );
+    ns.print(`Sell for Money rate: ${ns.formatPercent(sellForMoneyRate)} of production`);
+    const sellForMoneyCost = ns.hacknet.hashCost('Sell for Money');
+    const targetSellHashesPerSecond = productionRate * sellForMoneyRate;
+    sellForMoneyHashBudget += targetSellHashesPerSecond * (loopSleepMs / 1e3);
+    const targetSellPurchases = Math.floor(sellForMoneyHashBudget / sellForMoneyCost);
+    let actualSellPurchases = 0;
+    for (let i = 0; i < targetSellPurchases; i++) {
+      if (!ns.hacknet.spendHashes('Sell for Money')) break;
+      hashMoney++;
+      actualSellPurchases++;
+    }
+    sellForMoneyHashBudget -= actualSellPurchases * sellForMoneyCost;
     const maxHash = ns.hacknet.hashCapacity();
-    if (ns.hacknet.numHashes() > maxHash * 0.9) {
-      const budget = Math.floor(maxHash * 0.25);
-      if (
-        budget > ns.hacknet.hashCost('Reduce Minimum Security') &&
-        targetMinSec &&
-        targetMinSec > 1 &&
-        hashServerMinSecPerms
-      ) {
-        ns.hacknet.spendHashes('Reduce Minimum Security', resolvedTarget);
+
+    let budget = Math.floor(maxHash * 0.25);
+    const reduceMinSecCost = ns.hacknet.hashCost('Reduce Minimum Security');
+    if (budget > reduceMinSecCost && targetMinSec && targetMinSec > 1 && hashServerMinSecPerms) {
+      if (ns.hacknet.spendHashes('Reduce Minimum Security', resolvedMinSecTarget)) {
         redMinSec++;
-      } else if (budget > ns.hacknet.hashCost('Increase Maximum Money') && hashServerIncMaxMon) {
-        ns.hacknet.spendHashes('Increase Maximum Money', resolvedTarget);
-        incMaxMon++;
-      } else if (budget > ns.hacknet.hashCost('Improve Studying') && hashStudyPerms) {
-        ns.hacknet.spendHashes('Improve Studying');
-        studyingImproved++;
-      } else if (budget > ns.hacknet.hashCost('Improve Gym Training') && hashGymPerms) {
-        ns.hacknet.spendHashes('Improve Gym Training');
-        trainingImproved++;
-      } else if (
-        budget > ns.hacknet.hashCost('Sell for Corporation Funds') &&
-        ns.corporation.hasCorporation() &&
-        hashCorpPerms
-      ) {
-        ns.hacknet.spendHashes('Sell for Corporation Funds');
-        hashCorpFund++;
-      } else if (
-        budget > ns.hacknet.hashCost('Exchange for Corporation Research') &&
-        ns.corporation.hasCorporation() &&
-        hashCorpTechPerms
-      ) {
-        ns.hacknet.spendHashes('Exchange for Corporation Research');
-        hashCorpTech++;
-      } else {
-        ns.hacknet.spendHashes('Sell for Money');
-        hashMoney++;
+        budget -= reduceMinSecCost;
       }
     }
+
+    const incMaxMoneyCost = ns.hacknet.hashCost('Increase Maximum Money');
+    if (budget > incMaxMoneyCost && hashServerIncMaxMon) {
+      if (ns.hacknet.spendHashes('Increase Maximum Money', resolvedMaxMoneyTarget)) {
+        incMaxMon++;
+        budget -= incMaxMoneyCost;
+      }
+    }
+
+    const improveStudyingCost = ns.hacknet.hashCost('Improve Studying');
+    if (budget > improveStudyingCost && hashStudyPerms) {
+      if (ns.hacknet.spendHashes('Improve Studying')) {
+        studyingImproved++;
+        budget -= improveStudyingCost;
+      }
+    }
+
+    const improveGymTrainingCost = ns.hacknet.hashCost('Improve Gym Training');
+    if (budget > improveGymTrainingCost && hashGymPerms) {
+      if (ns.hacknet.spendHashes('Improve Gym Training')) {
+        trainingImproved++;
+        budget -= improveGymTrainingCost;
+      }
+    }
+
+    const corpFundsCost = ns.hacknet.hashCost('Sell for Corporation Funds');
+    if (budget > corpFundsCost && ns.corporation.hasCorporation() && hashCorpPerms) {
+      if (ns.hacknet.spendHashes('Sell for Corporation Funds')) {
+        hashCorpFund++;
+        budget -= corpFundsCost;
+      }
+    }
+
+    const corpResearchCost = ns.hacknet.hashCost('Exchange for Corporation Research');
+    if (budget > corpResearchCost && ns.corporation.hasCorporation() && hashCorpTechPerms) {
+      if (ns.hacknet.spendHashes('Exchange for Corporation Research')) {
+        hashCorpTech++;
+        budget -= corpResearchCost;
+      }
+    }
+
+    const bladeburnerSpCost = ns.hacknet.hashCost('Exchange for Bladeburner SP');
+    if (budget > bladeburnerSpCost && hashBladeburnerSpPerms) {
+      if (ns.hacknet.spendHashes('Exchange for Bladeburner SP')) {
+        budget -= bladeburnerSpCost;
+      }
+    }
+
+    const bladeburnerRankCost = ns.hacknet.hashCost('Exchange for Bladeburner Rank');
+    if (budget > bladeburnerRankCost && hashBladeburnerRankPerms) {
+      if (ns.hacknet.spendHashes('Exchange for Bladeburner Rank')) {
+        budget -= bladeburnerRankCost;
+      }
+    }
+
+    const companyFavorCost = ns.hacknet.hashCost('Exchange for Company Favor');
+    if (budget > companyFavorCost && hashCompanyFavorPerms) {
+      if (ns.hacknet.spendHashes('Company Favor', hashCompanyFavorTarget)) {
+        hashCompanyFavor++;
+        budget -= companyFavorCost;
+      }
+    }
+
     if (ns.hacknet.numNodes() < 1) {
       if (ns.getPlayer().money > ns.hacknet.getPurchaseNodeCost()) {
         ns.hacknet.purchaseNode();
@@ -214,6 +289,7 @@ export async function main(ns: NS) {
           cacheLvlUpgrades++;
         }
       }
+
       if (
         ns.getPlayer().money > ns.hacknet.getPurchaseNodeCost() &&
         ns.hacknet.numNodes() < ns.hacknet.maxNumNodes() &&
@@ -225,8 +301,9 @@ export async function main(ns: NS) {
     }
     if (hashStudyPerms) ns.print(`Current study mult: ${ns.formatPercent(ns.hacknet.getStudyMult() - 1)}`);
     if (hashGymPerms) ns.print(`Current training mult: ${ns.formatPercent(ns.hacknet.getTrainingMult() - 1)}`);
-    if (hashServerMinSecPerms) ns.print(`${resolvedTarget}'s MinSec: ${ns.formatNumber(targetMinSec ?? 0)}`);
-    if (hashServerIncMaxMon) ns.print(`${resolvedTarget}'s Max Server$: ${'$' + ns.formatNumber(targetMaxMon ?? 0)}`);
+    if (hashServerMinSecPerms) ns.print(`${resolvedMinSecTarget}'s MinSec: ${ns.formatNumber(targetMinSec ?? 0)}`);
+    if (hashServerIncMaxMon)
+      ns.print(`${resolvedMaxMoneyTarget}'s Max Server$: ${'$' + ns.formatNumber(targetMaxMon ?? 0)}`);
     if (
       hashMoney > 0 ||
       hashCorpFund > 0 ||
@@ -260,10 +337,12 @@ export async function main(ns: NS) {
       ns.print(`${art(ns.formatNumber(hashCorpTech * 1e3), { color: colorPalette.tech })} Scientific Research`);
     if (redMinSec > 0)
       ns.print(`${art(numPad(redMinSec, 3), { color: colorPalette.minsec })} Min Security Reduction(s)`);
-    if (incMaxMon > 0) ns.print(studyingImproved > 0);
+    if (incMaxMon > 0) ns.print(`${art(numPad(incMaxMon, 3), { color: colorPalette.maxmon })} Max Money Increase(s)`);
     ns.print(`${art(numPad(studyingImproved, 3), { color: colorPalette.study })} studying multiplier(s)`);
     if (trainingImproved > 0)
       ns.print(`${art(numPad(trainingImproved, 3), { color: colorPalette.train })} training multiplier(s)`);
+    if (hashCompanyFavor > 0)
+      ns.print(`${art(numPad(hashCompanyFavor ?? 0, 3), { color: colorPalette.companyfavor })} company favor(s)`);
     if (nodePurchases > 0 || levelUpgrades > 0 || ramUpgrades > 0 || coreUpgrades > 0 || cacheLvlUpgrades > 0)
       ns.print(art('Hacknet server upgrades bought:', { color: colorPalette.titles }));
     if (nodePurchases > 0) ns.print(`${art(numPad(nodePurchases, 3), { color: colorPalette.pnodes })} server node(s)`);
@@ -273,6 +352,6 @@ export async function main(ns: NS) {
     if (coreUpgrades > 0) ns.print(`${art(numPad(coreUpgrades, 3), { color: colorPalette.cnodes })} core upgrade(s)`);
     if (cacheLvlUpgrades > 0)
       ns.print(`${art(numPad(cacheLvlUpgrades, 3), { color: colorPalette.cashelevel })} cache lvl upgrade(s)`);
-    await ns.sleep(100);
+    await ns.sleep(loopSleepMs);
   }
 }

@@ -1038,6 +1038,10 @@ async function improveAllDivisions(): Promise<void> {
   let preparingToAcceptOffer = false;
   let saveForNextProductMode = false;
   const productSaveExitMultiplier = 1.1;
+  /** While saving for the next product, treat ~91% of spendable funds as earmarked for that goal; use 9% (3% per division) for gradual Tobacco / Agriculture / Chemical upgrades. */
+  const saveModeProductReserveRatio = 0.91;
+  const saveModeDivisionSpendRatio = 0.09;
+  const saveModePerDivisionSpendRatio = 0.03;
   // noinspection InfiniteLoopJS
   while (true) {
     ++cycleCount;
@@ -1126,8 +1130,14 @@ async function improveAllDivisions(): Promise<void> {
     >;
     const totalFunds = Math.max(corpAfterSpending.funds - reservedFunds, 0);
     // Keep enough funds to create the next product, otherwise upgrade spending can starve product progression.
-    const productBudgetReserve = Math.min(requiredProductDevelopmentBudget, totalFunds);
-    let availableFunds = Math.max(totalFunds - productBudgetReserve, 0);
+    // In save-for-product mode, funds are below the full next-product budget; reserve ~91% toward that goal and spend ~9% on divisions so they still improve gradually.
+    let availableFunds: number;
+    if (saveForNextProductMode) {
+      availableFunds = totalFunds * saveModeDivisionSpendRatio;
+    } else {
+      const productBudgetReserve = Math.min(requiredProductDevelopmentBudget, totalFunds);
+      availableFunds = Math.max(totalFunds - productBudgetReserve, 0);
+    }
 
     // In round 3 and 4, we only develop up to maxNumberOfProducts
     let maxNumberOfProducts = maxNumberOfProductsInRound3;
@@ -1310,19 +1320,24 @@ async function improveAllDivisions(): Promise<void> {
       ).lastCycleRevenue > 0;
     const isSavingForNextProduct = saveForNextProductMode;
     if (isSavingForNextProduct) {
+      const budgetForNextProject = totalFunds * saveModeProductReserveRatio;
       ns.print(
         `Saving funds for next product: ${ns.formatNumber(corpLoop.funds)} / ` +
           `${ns.formatNumber(requiredProductDevelopmentBudget)}.`,
       );
       ns.print(
-        `Save-mode diagnostics: currentFunds=${ns.formatNumber(corpAfterSpending.funds)}, ` +
+        `Save-mode: ~${saveModeProductReserveRatio * 100}% toward next product (${ns.formatNumber(budgetForNextProject)}), ` +
+          `${saveModeDivisionSpendRatio * 100}% for divisions (${ns.formatNumber(availableFunds)}, ` +
+          `${saveModePerDivisionSpendRatio * 100}% each). ` +
+          `Diagnostics: currentFunds=${ns.formatNumber(corpAfterSpending.funds)}, ` +
           `reservedFunds=${ns.formatNumber(reservedFunds)}, spendable=${ns.formatNumber(totalFunds)}.`,
       );
     }
-    const budgetForTobaccoDivision = availableFunds * 0.9;
+    const budgetForTobaccoDivision = isSavingForNextProduct
+      ? totalFunds * saveModePerDivisionSpendRatio
+      : availableFunds * 0.9;
     if (
       tobaccoHasRevenue &&
-      !isSavingForNextProduct &&
       (cycleCount % 5 === 0 || (await needToUpgradeDivision(primaryProductDivisionName, budgetForTobaccoDivision)))
     ) {
       availableFunds -= budgetForTobaccoDivision;
@@ -1387,26 +1402,22 @@ async function improveAllDivisions(): Promise<void> {
         });
     };
 
-    const budgetForAgricultureDivision = Math.max(
-      Math.min(profit * (currentRound <= 4 ? 0.9 : 0.99), totalFunds * 0.09, availableFunds),
-      0,
-    );
+    const budgetForAgricultureDivision = isSavingForNextProduct
+      ? Math.max(Math.min(totalFunds * saveModePerDivisionSpendRatio, availableFunds), 0)
+      : Math.max(Math.min(profit * (currentRound <= 4 ? 0.9 : 0.99), totalFunds * 0.09, availableFunds), 0);
     if (
       tobaccoHasRevenue &&
-      !isSavingForNextProduct &&
       (cycleCount % 10 === 0 ||
         (await needToUpgradeDivision(DivisionName.AGRICULTURE, budgetForAgricultureDivision))) &&
       !pendingImprovingSupportDivisions.has(DivisionName.AGRICULTURE)
     ) {
       improveSupportDivisionAndBuyBoostMaterials(DivisionName.AGRICULTURE, budgetForAgricultureDivision);
     }
-    const budgetForChemicalDivision = Math.max(
-      Math.min(profit * (currentRound <= 4 ? 0.1 : 0.01), totalFunds * 0.01, availableFunds),
-      0,
-    );
+    const budgetForChemicalDivision = isSavingForNextProduct
+      ? Math.max(Math.min(totalFunds * saveModePerDivisionSpendRatio, availableFunds), 0)
+      : Math.max(Math.min(profit * (currentRound <= 4 ? 0.1 : 0.01), totalFunds * 0.01, availableFunds), 0);
     if (
       tobaccoHasRevenue &&
-      !isSavingForNextProduct &&
       (cycleCount % 15 === 0 || (await needToUpgradeDivision(DivisionName.CHEMICAL, budgetForChemicalDivision))) &&
       !pendingImprovingSupportDivisions.has(DivisionName.CHEMICAL)
     ) {
@@ -1646,6 +1657,12 @@ function getResearchCostMultiplier(divisionName: string, researchName: ResearchN
     case ResearchName.HI_TECH_RND_LABORATORY:
       costMultiplier = 1;
       break;
+    case ResearchName.AUTO_PARTY:
+      costMultiplier = 1;
+      break;
+    case ResearchName.AUTO_BREW:
+      costMultiplier = 1;
+      break;
     case ResearchName.OVERCLOCK:
     case ResearchName.STIMU:
     case ResearchName.GO_JUICE:
@@ -1655,6 +1672,8 @@ function getResearchCostMultiplier(divisionName: string, researchName: ResearchN
     case ResearchName.AUTO_DRUG:
       costMultiplier = 13.5;
       break;
+    case ResearchName.MARKET_TA_1:
+    case ResearchName.MARKET_TA_2:
     case ResearchName.SELF_CORRECTING_ASSEMBLERS:
     case ResearchName.DRONES_ASSEMBLY:
     case ResearchName.DRONES_TRANSPORT:

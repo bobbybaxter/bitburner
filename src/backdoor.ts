@@ -2,7 +2,6 @@ import { NS } from '@ns';
 import { getServerNames } from '/helpers/get-server-names.js';
 import { Queue } from '/helpers/Queue.js';
 import { Do } from './helpers/do';
-import { openPorts } from './helpers/open-ports.js';
 
 const FIVE_MINUTES = 1 * 60 * 1000;
 
@@ -28,40 +27,31 @@ export async function main(ns: NS): Promise<void> {
   // ns.disableLog('ALL');
 
   while (true) {
+    ns.exec('/helpers/open-all-ports.js', 'home');
+
     const servers = getServerNames(ns)
       .map((s) => s.hostname)
-      .filter((name) => name !== 'home' && !name.includes('pserv'));
+      .filter((name) => name !== 'home' && !name.includes('pserv') && !name.startsWith('hacknet'));
 
     const hackLevel = ns.getHackingLevel();
-    let remaining = 0;
+    let serversBackdoored = 0;
 
     for (const hostname of servers) {
       let server = ns.getServer(hostname);
 
-      if (server.backdoorInstalled) continue;
-      if (!server.hasAdminRights) {
-        try {
-          ns.nuke(hostname);
-        } catch (e) {
-          ns.print(`nuke failed on ${hostname}: ${e}`);
-        }
-        openPorts(ns, server);
-        server = ns.getServer(hostname);
-      }
-      if (!server.hasAdminRights) {
-        ns.print(`SKIP ${hostname}: no root access`);
-        remaining++;
+      if (server.backdoorInstalled) {
+        serversBackdoored++;
         continue;
       }
-      if ((server.requiredHackingSkill ?? Infinity) > hackLevel) {
-        ns.print(`SKIP ${hostname}: need hack ${server.requiredHackingSkill}, have ${hackLevel}`);
-        remaining++;
+
+      if (!server.hasAdminRights || (server.requiredHackingSkill ?? Infinity) > hackLevel) {
+        ns.print(`${hostname} does not have admin rights or required hacking skill, skipping.`);
         continue;
       }
 
       const path = getPath(ns, hostname);
       if (!path) {
-        remaining++;
+        ns.print(`${hostname} has no path to home, skipping.`);
         continue;
       }
 
@@ -70,39 +60,25 @@ export async function main(ns: NS): Promise<void> {
           await Do(ns, 'ns.singularity.connect', hop);
         }
         server = ns.getServer(hostname);
-        if (!server.hasAdminRights) {
-          openPorts(ns, server);
-          try {
-            ns.nuke(hostname);
-          } catch (e) {
-            ns.print(`nuke failed on ${hostname}: ${e}`);
-          }
-          server = ns.getServer(hostname);
-        }
-        if (!server.hasAdminRights) {
-          ns.tprint(`WARN: ${hostname}: no root before backdoor; skipping`);
-        } else {
-          try {
-            await Do(ns, 'ns.singularity.installBackdoor');
-            ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`);
-          } catch (e) {
-            ns.tprint(`WARN: Backdoor failed on ${hostname}: ${e}`);
-          }
+        try {
+          await Do(ns, 'ns.singularity.installBackdoor');
+          ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`);
+        } catch (e) {
+          ns.tprint(`WARN: Backdoor failed on ${hostname}: ${e}`);
         }
       } catch (e) {
         ns.tprint(`WARN: Failed to navigate to ${hostname}: ${e}`);
       }
-      remaining++;
 
       await Do(ns, 'ns.singularity.connect', 'home');
     }
 
-    if (remaining === 0) {
+    if (serversBackdoored === servers.length) {
       ns.tprint('All servers backdoored. Exiting.');
       return;
     }
 
-    ns.tprint(`${remaining} servers remaining. Retrying in 1 minute.`);
+    ns.tprint(`${serversBackdoored}/${servers.length} servers backdoored. Retrying in 1 minute.`);
     await ns.sleep(FIVE_MINUTES);
   }
 }

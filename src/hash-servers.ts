@@ -1,6 +1,5 @@
 import { NS } from '@ns';
 
-/** @param {NS} ns */
 export async function main(ns: NS) {
   ns.disableLog('sleep');
   if (ns.args.includes('tail')) ns.ui.openTail();

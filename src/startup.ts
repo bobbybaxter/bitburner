@@ -1,6 +1,5 @@
 import { NS } from '@ns';
 import { Do } from '/helpers/do.js';
-import { DivisionName, hasDivision } from './helpers/corpo/corporation-utils';
 
 /**
  * Starts all scripts on the home server
@@ -8,6 +7,14 @@ import { DivisionName, hasDivision } from './helpers/corpo/corporation-utils';
  */
 export async function main(ns: NS): Promise<void> {
   // disableNoisyLogs(ns);
+  const hasCorporationDivision = async (divisionName: string): Promise<boolean> => {
+    try {
+      await Do(ns, 'ns.corporation.getDivision', divisionName);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   await ns.run('infiltrate.js', 1);
   await ns.run('open-all-ports.js', 1);
@@ -36,28 +43,32 @@ export async function main(ns: NS): Promise<void> {
   }
 
   if ((resetInfo.currentNode === 3 || resetInfo.ownedSF.has(3)) && !ns.isRunning('corporation.js')) {
-    const canCreateCorporationSelfFund = ns.corporation.canCreateCorporation(true);
-    const canCreateCorporationBorrowFunds = ns.corporation.canCreateCorporation(false);
+    const canCreateCorporationSelfFund = (await Do(ns, 'ns.corporation.canCreateCorporation', true)) as boolean;
+    const canCreateCorporationBorrowFunds = (await Do(ns, 'ns.corporation.canCreateCorporation', false)) as boolean;
+    const hasCorporation = (await Do(ns, 'ns.corporation.hasCorporation')) as boolean;
 
-    if (ns.corporation.hasCorporation()) {
-      if (!hasDivision(ns, DivisionName.CHEMICAL)) {
-        if (ns.exec('corporation.js', 'home', 1, '--round2', '--benchmark') === 0) {
+    if (hasCorporation) {
+      if (!(await hasCorporationDivision('Chemical'))) {
+        if (ns.run('corporation.js', 1, '--round2', '--benchmark') === 0) {
           ns.toast('Failed to run corporation.js --round2 --benchmark');
         }
-      } else if (!hasDivision(ns, DivisionName.TOBACCO_0)) {
-        if (ns.exec('corporation.js', 'home', 1, '--round3', '--benchmark') === 0) {
+      } else if (!(await hasCorporationDivision('T0'))) {
+        if (ns.run('corporation.js', 1, '--round3', '--benchmark') === 0) {
           ns.toast('Failed to run corporation.js --round3 --benchmark');
         }
       } else {
-        if (ns.exec('corporation.js', 'home', 1, '--improveAllDivisions', '--benchmark') === 0) {
+        if (ns.run('corporation.js', 1, '--improveAllDivisions', '--benchmark') === 0) {
           ns.toast('Failed to run corporation.js --improveAllDivisions --benchmark');
         }
       }
     } else if (canCreateCorporationSelfFund) {
       await ns.run('corporation.js', 1, '--round1', '--auto', '--selfFund');
+      ns.run('daemon.js', 1, '--maintainCorporation');
     } else if (canCreateCorporationBorrowFunds) {
       await ns.run('corporation.js', 1, '--round1', '--auto');
+      ns.run('daemon.js', 1, '--maintainCorporation');
     }
+    ns.run('daemon.js', 1, '--maintainCorporation');
   }
 
   const hasSF4 = resetInfo.ownedSF.has(4) || resetInfo.currentNode === 4;
@@ -76,7 +87,7 @@ export async function main(ns: NS): Promise<void> {
   }
 
   if (!ns.isRunning('backdoor.js')) await ns.run('backdoor.js', 1);
-  // if (!ns.isRunning('augs.js')) await ns.run('augs.js', 1);
+  if (!ns.isRunning('augs.js')) await ns.run('augs.js', 1);
   if (!ns.isRunning('hack3.js')) await ns.run('hack3.js', 1);
   if (
     resetInfo.currentNode === 6 ||
@@ -87,9 +98,9 @@ export async function main(ns: NS): Promise<void> {
     if (!ns.isRunning('bladeburner.js')) await ns.run('bladeburner.js', 1);
   }
 
-  while (!ns.hasTorRouter()) {
+  while (!(await Do(ns, 'ns.hasTorRouter'))) {
     await Do(ns, 'ns.singularity.purchaseTor');
-    if (ns.hasTorRouter()) break;
+    if (await Do(ns, 'ns.hasTorRouter')) break;
     await ns.sleep(60_000);
   }
 
@@ -103,7 +114,7 @@ export async function main(ns: NS): Promise<void> {
       }
     }
 
-    if (programsToPurchase.length === 0) return;
+    if (programsToPurchase.length === 0) break;
 
     await Promise.all(
       programsToPurchase.map(async (program: string) => {
@@ -116,5 +127,16 @@ export async function main(ns: NS): Promise<void> {
     );
 
     await ns.sleep(60_000);
+  }
+
+  const hasSF9 = resetInfo.currentNode === 9 || resetInfo.ownedSF.has(9);
+  if (hasSF9) {
+    if (!ns.isRunning('setup-hashnet.js')) {
+      await ns.run('setup-hashnet.js', 1);
+    }
+    if (!ns.isRunning('hash-servers.js')) {
+      await ns.run('hash-servers.js', 1);
+      await ns.scriptKill('hacknet-opt.js', 'home');
+    }
   }
 }

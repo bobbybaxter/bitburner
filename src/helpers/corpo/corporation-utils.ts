@@ -64,13 +64,13 @@ export const boostMaterials = [
 
 export const researchPrioritiesForSupportDivision: ResearchName[] = [
   ResearchName.HI_TECH_RND_LABORATORY,
+  ResearchName.AUTO_PARTY,
+  ResearchName.AUTO_BREW,
   ResearchName.OVERCLOCK,
   ResearchName.STIMU,
   ResearchName.AUTO_DRUG,
   ResearchName.GO_JUICE,
   ResearchName.CPH4_INJECT,
-  ResearchName.AUTO_BREW,
-  ResearchName.AUTO_PARTY,
 
   ResearchName.MARKET_TA_1,
   ResearchName.MARKET_TA_2,
@@ -85,6 +85,12 @@ export const researchPrioritiesForProductDivision: ResearchName[] = [
   ResearchName.UPGRADE_FULCRUM,
   ResearchName.UPGRADE_CAPACITY_1,
   ResearchName.UPGRADE_CAPACITY_2,
+];
+
+/** Priorities the standard research buyer can actually finish (capacity tiers use an infinite RP multiplier). */
+export const researchPrioritiesForProductDivisionOfficeCompletion: ResearchName[] = [
+  ...researchPrioritiesForSupportDivision,
+  ResearchName.UPGRADE_FULCRUM,
 ];
 
 export const exportString = '(IPROD+IINV/10)*(-1)';

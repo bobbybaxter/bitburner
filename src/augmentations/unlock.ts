@@ -10,13 +10,18 @@ run /augmentations/unlock.js [ hacking | charisma | combat | crime | faction | h
 
 */
 
-import type { NS, PlayerRequirement, Server } from '@ns';
+import type { NS, Player, PlayerRequirement, Server } from '@ns';
 import { canPurchaseFrom } from 'augmentations/buy.js';
 import { type AugmentationInfo, averageValue, DOMAINS, getAllAugmentations } from 'augmentations/info.js';
 import { Do } from 'helpers/do.js';
 import { ALL_CORPORATIONS } from '/constants/all-companies.js';
 import { ALL_FACTIONS, ALL_LOCATION_FACTIONS, LOCATION_FACTION_GROUPS } from '/constants/all-factions.js';
-import { type CompanyPositionData, REP_GRINDING_POSITIONS } from '/constants/company-positions.js';
+import {
+  type CompanyPositionData,
+  getCompanyPositionByTitle,
+  getCompanyPositionsInField,
+  REP_GRINDING_POSITIONS,
+} from '/constants/company-positions.js';
 import { installBackdoor } from '/helpers/install-backdoor.js';
 
 interface FactionWithRep {
@@ -26,24 +31,62 @@ interface FactionWithRep {
   inviteReqs?: PlayerRequirement[];
 }
 
-interface ExtendedPlayer {
-  factions: string[];
-  skills: { hacking: number; strength: number; [key: string]: number };
-  jobs: Partial<Record<string, string>>;
-  city: string;
-  money: number;
-  karma: number;
-  numPeopleKilled: number;
-  currentNode?: number;
-  sourceFiles?: Array<{ n: number }>;
-  augmentations?: string[];
-  isWorking?: boolean;
-  workType?: string;
-}
+/** Bribe via ns.corporation.bribe when valuation ≥ corp bribeThreshold, player is in the faction, and getFactionWorkTypes is non-empty. */
+async function tryCorporationBribeForFactionRep(ns: NS, factionName: string, repNeeded: number): Promise<boolean> {
+  if (!(repNeeded > 0)) {
+    return false;
+  }
 
-/** Faction membership and work state from the running script — avoids stale `Do(ns.getPlayer')` right after singularity actions in a subprocess. */
-function livePlayer(ns: NS): ExtendedPlayer {
-  return ns.getPlayer() as unknown as ExtendedPlayer;
+  const hasCorp = (await Do(ns, 'ns.corporation.hasCorporation')) as boolean;
+  if (!hasCorp) {
+    return false;
+  }
+
+  const constants = (await Do(ns, 'ns.corporation.getConstants')) as Pick<
+    ReturnType<NS['corporation']['getConstants']>,
+    'bribeThreshold' | 'bribeAmountPerReputation'
+  >;
+  const corp = (await Do(ns, 'ns.corporation.getCorporation')) as { valuation: number };
+  if (corp.valuation < constants.bribeThreshold) {
+    ns.print(
+      `Skipping corp bribe (${factionName}): valuation ${ns.formatNumber(corp.valuation)} < threshold ${ns.formatNumber(constants.bribeThreshold)}.`,
+    );
+    return false;
+  }
+
+  if (!ns.getPlayer().factions.includes(factionName)) {
+    return false;
+  }
+
+  const workTypes = (await Do(ns, 'ns.singularity.getFactionWorkTypes', factionName)) as unknown[];
+  if (workTypes.length === 0) {
+    ns.print(`Skipping corp bribe (${factionName}): faction offers no work types.`);
+    return false;
+  }
+
+  const perRep = constants.bribeAmountPerReputation;
+  if (!(perRep > 0)) {
+    return false;
+  }
+
+  const bribeAmount = Math.ceil(repNeeded * perRep);
+  const money = ns.getPlayer().money;
+  if (bribeAmount > money) {
+    ns.print(
+      `Skipping corp bribe (${factionName}): need ${ns.formatNumber(bribeAmount)} cash, have ${ns.formatNumber(money)}.`,
+    );
+    return false;
+  }
+
+  const ok = (await Do(ns, 'ns.corporation.bribe', factionName, bribeAmount)) as boolean;
+  if (ok) {
+    ns.tprint(
+      `Corp bribe: paid ${ns.formatNumber(bribeAmount)} to ${factionName} for ~${ns.formatNumber(repNeeded, 3)} rep toward next aug.`,
+    );
+  } else {
+    ns.print(`Corp bribe to ${factionName} failed (API returned false).`);
+  }
+  return ok;
 }
 
 type GangInfo = { faction: string };
@@ -138,13 +181,29 @@ export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = 
       ns.tprint(
         `Next unlock: '${aug.name}' via ${faction?.name ?? 'unknown'} (${ns.formatNumber(faction?.repNeeded ?? 0, 3)} more rep needed).`,
       );
-      const player = livePlayer(ns);
-      if (player.isWorking && player.workType !== 'Working for Faction') {
-        ns.tprint(`Not starting faction work because player is already ${player.workType}.`);
-        ns.print(`Not starting faction work because player is already ${player.workType}.`);
+      const repNeededForBribe = faction?.repNeeded ?? 0;
+      if (
+        faction &&
+        repNeededForBribe > 0 &&
+        (await tryCorporationBribeForFactionRep(ns, faction.name, repNeededForBribe))
+      ) {
+        allFutureAugs = await getFutureAugs(ns, { domains, cheap });
+        futureAugs = allFutureAugs.filter((a) => !a.moneyOnly && a.workableFaction);
+        continue;
+      }
+
+      const currentWork = (await Do(ns, 'ns.singularity.getCurrentWork')) as { type?: string } | null;
+      const isBusy = (await Do(ns, 'ns.singularity.isBusy')) as boolean;
+      if (isBusy && currentWork?.type !== 'FACTION') {
+        ns.tprint(
+          `Not starting faction work because player is already busy with ${currentWork?.type ?? 'unknown work'}.`,
+        );
+        ns.print(
+          `Not starting faction work because player is already busy with ${currentWork?.type ?? 'unknown work'}.`,
+        );
         return;
       }
-      for (const workType of getWorkTypes(player)) {
+      for (const workType of getWorkTypes(ns.getPlayer())) {
         if (faction && (await Do(ns, 'ns.singularity.workForFaction', faction.name, workType, false))) {
           ns.print(`Started working for ${faction.name} as ${workType}.`);
           break;
@@ -153,8 +212,7 @@ export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = 
 
       ns.print('Waiting for player to finish work.');
       await ns.sleep(60 * 1000);
-      const updatedPlayer = livePlayer(ns);
-      if (!updatedPlayer.isWorking) {
+      if (!((await Do(ns, 'ns.singularity.isBusy')) as boolean)) {
         ns.print('Player is not working anymore.');
         return;
       } else {
@@ -176,7 +234,7 @@ export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = 
     ns.tprint(
       `Next unlock: '${nextAug.name}' — joining ${joinableFaction.name} first (${ns.formatNumber(nextAug.price ?? 0)} needed).`,
     );
-    const currentlyInFaction = livePlayer(ns).factions.includes(joinableFaction.name);
+    const currentlyInFaction = ns.getPlayer().factions.includes(joinableFaction.name);
     if (!currentlyInFaction) {
       ns.print(`Taking action to join faction: ${joinableFaction.name}`);
       const progressed = await takeActionToJoinFaction(ns, joinableFaction);
@@ -227,7 +285,7 @@ export async function getUnmetRequirements(
   faction: FactionWithRep & { name: string; inviteReqs: PlayerRequirement[] },
 ): Promise<PlayerRequirement[]> {
   const unmetRequirements: PlayerRequirement[] = [];
-  const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+  const player = ns.getPlayer();
 
   const hasHacknetReqs = faction.inviteReqs.some(
     (req) => req.type === 'hacknetLevels' || req.type === 'hacknetRAM' || req.type === 'hacknetCores',
@@ -303,7 +361,7 @@ export async function getUnmetRequirements(
     if (req.type === 'skills') {
       const skillReq = (req as PlayerRequirement & { skills: Record<string, number> }).skills;
       const meetsAll = skillReq
-        ? Object.keys(skillReq).every((skill) => player.skills[skill] >= skillReq[skill])
+        ? Object.keys(skillReq).every((skill) => getSkillLevel(player, skill) >= skillReq[skill])
         : true;
       if (!meetsAll) {
         unmetRequirements.push(req);
@@ -325,7 +383,7 @@ export async function getUnmetRequirements(
           const skillReq = (condition as PlayerRequirement & { skills?: Record<string, number> }).skills;
           return skillReq
             ? Object.keys(skillReq).every((skill) => {
-                return player.skills[skill] >= skillReq[skill];
+                return getSkillLevel(player, skill) >= skillReq[skill];
               })
             : false;
         });
@@ -360,7 +418,7 @@ export async function getUnmetRequirements(
             const skillCondition = condition as PlayerRequirement & { skills?: Record<string, number> };
             const skills = skillCondition.skills ?? {};
             const skillDiff = Object.keys(skills).reduce((diff, skill) => {
-              const current = player.skills[skill];
+              const current = getSkillLevel(player, skill);
               const reqVal = skills[skill];
               const deficit = Math.max(0, reqVal - current);
               return Math.max(diff, deficit);
@@ -487,8 +545,18 @@ const COMBAT_SKILL_GYM_TYPE: Record<string, string> = {
   agility: 'agi',
 };
 
+function getSkillLevel(player: Player, skill: string): number {
+  if (!(skill in player.skills)) return 0;
+  return player.skills[skill as keyof Player['skills']];
+}
+
+function getCurrentJobAtCompany(player: Player, company: string): string | undefined {
+  const entries = Object.entries(player.jobs ?? {});
+  return entries.find(([name]) => name === company)?.[1];
+}
+
 async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Promise<void> {
-  const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+  const player = ns.getPlayer();
 
   for (const req of reqs) {
     if (req.type === 'backdoorInstalled') {
@@ -525,7 +593,7 @@ async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Prom
       const skillReq = (req as PlayerRequirement & { skills: Record<string, number> }).skills;
       if (skillReq) {
         const combatDeficits = Object.entries(skillReq).filter(
-          ([skill, required]) => COMBAT_SKILL_GYM_TYPE[skill] && player.skills[skill] < required,
+          ([skill, required]) => COMBAT_SKILL_GYM_TYPE[skill] && getSkillLevel(player, skill) < required,
         );
 
         if (combatDeficits.length > 0) {
@@ -538,14 +606,14 @@ async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Prom
 
           for (const [skill, required] of combatDeficits) {
             const gymType = COMBAT_SKILL_GYM_TYPE[skill];
-            ns.tprint(`Training ${skill} at Powerhouse Gym (need ${required}, have ${player.skills[skill]}).`);
+            ns.tprint(`Training ${skill} at Powerhouse Gym (need ${required}, have ${getSkillLevel(player, skill)}).`);
             await Do(ns, 'ns.singularity.gymWorkout', 'Powerhouse Gym', gymType, false);
 
             while (true) {
               await ns.sleep(10_000);
-              const p = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
-              if (p.skills[skill] >= required) {
-                ns.tprint(`${skill} training complete: ${p.skills[skill]}/${required}.`);
+              const p = ns.getPlayer();
+              if (getSkillLevel(p, skill) >= required) {
+                ns.tprint(`${skill} training complete: ${getSkillLevel(p, skill)}/${required}.`);
                 break;
               }
             }
@@ -554,7 +622,7 @@ async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Prom
         }
 
         if (skillReq.charisma && player.skills.charisma < skillReq.charisma) {
-          const currentPlayer = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+          const currentPlayer = ns.getPlayer();
           if (currentPlayer.city !== 'Volhaven') {
             const traveled = await Do(ns, 'ns.singularity.travelToCity', 'Volhaven');
             if (!traveled) {
@@ -569,7 +637,7 @@ async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Prom
 
           while (true) {
             await ns.sleep(10_000);
-            const p = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+            const p = ns.getPlayer();
             if (p.skills.charisma >= skillReq.charisma) {
               ns.tprint(`Charisma training complete: ${p.skills.charisma}/${skillReq.charisma}.`);
               break;
@@ -581,9 +649,9 @@ async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Prom
         const otherDeficits = Object.entries(skillReq)
           .filter(
             ([skill, required]) =>
-              !COMBAT_SKILL_GYM_TYPE[skill] && skill !== 'charisma' && player.skills[skill] < required,
+              !COMBAT_SKILL_GYM_TYPE[skill] && skill !== 'charisma' && getSkillLevel(player, skill) < required,
           )
-          .map(([skill, required]) => `${skill}: ${player.skills[skill]}/${required}`);
+          .map(([skill, required]) => `${skill}: ${getSkillLevel(player, skill)}/${required}`);
         if (otherDeficits.length > 0) {
           ns.tprint(`Remaining skills needed: ${otherDeficits.join(', ')}`);
         }
@@ -607,7 +675,7 @@ async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Prom
 
       while (true) {
         await ns.sleep(10_000);
-        const p = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+        const p = ns.getPlayer();
         const karmaMet = requiredKarma === undefined || p.karma <= requiredKarma;
         const killsMet = requiredKills === undefined || p.numPeopleKilled >= requiredKills;
         if (karmaMet && killsMet) {
@@ -735,7 +803,7 @@ async function fulfillHacknetRequirement(ns: NS, req: PlayerRequirement): Promis
       }
     }
 
-    const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+    const player = ns.getPlayer();
     if (cheapestNode === -1 || cheapestCost > player.money) {
       ns.tprint(
         `Can't afford hacknet upgrade for ${req.type}: need ${ns.formatNumber(cheapestCost)} (have ${ns.formatNumber(player.money)}). Current: ${totals[config.key]}/${required}.`,
@@ -755,11 +823,15 @@ async function fulfillHacknetRequirement(ns: NS, req: PlayerRequirement): Promis
   ns.tprint(`Hacknet requirement met: ${req.type} = ${totals[config.key]}/${required}.`);
 }
 
-function findBestRepPosition(player: ExtendedPlayer, companyRep: number): CompanyPositionData | null {
+function findBestRepPosition(player: Player, companyRep: number): CompanyPositionData | null {
   let best: CompanyPositionData | null = null;
   for (const pos of REP_GRINDING_POSITIONS) {
     if ((pos.reqdHacking ?? 0) > player.skills.hacking) continue;
     if ((pos.reqdCharisma ?? 0) > player.skills.charisma) continue;
+    if ((pos.reqdStrength ?? 0) > player.skills.strength) continue;
+    if ((pos.reqdDefense ?? 0) > player.skills.defense) continue;
+    if ((pos.reqdDexterity ?? 0) > player.skills.dexterity) continue;
+    if ((pos.reqdAgility ?? 0) > player.skills.agility) continue;
     if ((pos.reqdReputation ?? 0) > companyRep) continue;
     if (!best || pos.repMultiplier > best.repMultiplier) {
       best = pos;
@@ -768,10 +840,144 @@ function findBestRepPosition(player: ExtendedPlayer, companyRep: number): Compan
   return best;
 }
 
+/**
+ * Next rung on the same career field (Software / IT / Business) when company reputation already
+ * allows that tier — may still need skills trained before applyToCompany will promote.
+ */
+function findNextPromotionPosition(companyRep: number, currentTitle: string | undefined): CompanyPositionData | null {
+  if (!currentTitle) return null;
+  const current = getCompanyPositionByTitle(currentTitle);
+  if (!current) return null;
+
+  const inField = getCompanyPositionsInField(current.field);
+  const candidates = inField.filter(
+    (pos) => pos.repMultiplier > current.repMultiplier && (pos.reqdReputation ?? 0) <= companyRep,
+  );
+  if (candidates.length === 0) return null;
+
+  candidates.sort(
+    (a, b) =>
+      a.repMultiplier - b.repMultiplier ||
+      (a.reqdReputation ?? 0) - (b.reqdReputation ?? 0) ||
+      a.title.localeCompare(b.title),
+  );
+  return candidates[0] ?? null;
+}
+
+const ZB_INSTITUTE = 'ZB Institute of Technology';
+
+/** Train combat / charisma / hacking up to what `pos` requires (e.g. before a promotion apply). */
+async function trainCompanyPromotionSkills(ns: NS, pos: CompanyPositionData): Promise<void> {
+  const combatSkillToReq: Record<'strength' | 'defense' | 'dexterity' | 'agility', keyof CompanyPositionData> = {
+    strength: 'reqdStrength',
+    defense: 'reqdDefense',
+    dexterity: 'reqdDexterity',
+    agility: 'reqdAgility',
+  };
+  const combatSkills = ['strength', 'defense', 'dexterity', 'agility'] as const;
+  for (const skill of combatSkills) {
+    const required = pos[combatSkillToReq[skill]] as number | undefined;
+    if (required === undefined) continue;
+    const player = ns.getPlayer();
+    if (player.skills[skill] >= required) continue;
+
+    if (player.city !== 'Sector-12') {
+      const traveled = await Do(ns, 'ns.singularity.travelToCity', 'Sector-12');
+      if (!traveled) {
+        ns.tprint('Failed to travel to Sector-12 for gym training (promotion prep).');
+      }
+    }
+
+    const gymType = COMBAT_SKILL_GYM_TYPE[skill];
+    ns.tprint(`Training ${skill} at Powerhouse Gym for promotion (need ${required}, have ${player.skills[skill]}).`);
+    await Do(ns, 'ns.singularity.gymWorkout', 'Powerhouse Gym', gymType, false);
+
+    while (true) {
+      await ns.sleep(10_000);
+      const p = ns.getPlayer();
+      if (p.skills[skill] >= required) {
+        ns.tprint(`${skill} training complete: ${p.skills[skill]}/${required}.`);
+        break;
+      }
+    }
+    await Do(ns, 'ns.singularity.stopAction');
+  }
+
+  const chaReq = pos.reqdCharisma;
+  if (chaReq !== undefined) {
+    const p = ns.getPlayer();
+    if (p.skills.charisma < chaReq) {
+      if (p.city !== 'Volhaven') {
+        const traveled = await Do(ns, 'ns.singularity.travelToCity', 'Volhaven');
+        if (!traveled) {
+          ns.tprint('Failed to travel to Volhaven for charisma (promotion prep).');
+        }
+      }
+      ns.tprint(`Training charisma for promotion (need ${chaReq}, have ${p.skills.charisma}).`);
+      await Do(ns, 'ns.singularity.universityCourse', ZB_INSTITUTE, 'Leadership', false);
+      while (true) {
+        await ns.sleep(10_000);
+        const pl = ns.getPlayer();
+        if (pl.skills.charisma >= chaReq) {
+          ns.tprint(`Charisma training complete: ${pl.skills.charisma}/${chaReq}.`);
+          break;
+        }
+      }
+      await Do(ns, 'ns.singularity.stopAction');
+    }
+  }
+
+  const hackReq = pos.reqdHacking;
+  if (hackReq !== undefined) {
+    const p = ns.getPlayer();
+    if (p.skills.hacking < hackReq) {
+      if (p.city !== 'Volhaven') {
+        const traveled = await Do(ns, 'ns.singularity.travelToCity', 'Volhaven');
+        if (!traveled) {
+          ns.tprint('Failed to travel to Volhaven for hacking (promotion prep).');
+        }
+      }
+      ns.tprint(`Training hacking (Algorithms) for promotion (need ${hackReq}, have ${p.skills.hacking}).`);
+      await Do(ns, 'ns.singularity.universityCourse', ZB_INSTITUTE, 'Algorithms', false);
+      while (true) {
+        await ns.sleep(10_000);
+        const pl = ns.getPlayer();
+        if (pl.skills.hacking >= hackReq) {
+          ns.tprint(`Hacking training complete: ${pl.skills.hacking}/${hackReq}.`);
+          break;
+        }
+      }
+      await Do(ns, 'ns.singularity.stopAction');
+    }
+  }
+}
+
 async function applyForBestRepPosition(ns: NS, company: string): Promise<boolean> {
-  const player = (await Do(ns, 'ns.getPlayer')) as ExtendedPlayer;
+  let player = ns.getPlayer();
   const companyRep = (await Do(ns, 'ns.singularity.getCompanyRep', company)) as number;
-  const currentJob = (player.jobs ?? {})[company];
+  let currentJob = getCurrentJobAtCompany(player, company);
+
+  const nextPromo = findNextPromotionPosition(companyRep, currentJob);
+  if (nextPromo) {
+    ns.tprint(
+      `Promotion target: ${nextPromo.title} (${nextPromo.repMultiplier}x rep, field ${nextPromo.field}) — training if needed.`,
+    );
+    await trainCompanyPromotionSkills(ns, nextPromo);
+    const jobBeforePromoApply = currentJob;
+    const appliedPromo = await Do(ns, 'ns.singularity.applyToCompany', company, nextPromo.field);
+    if (appliedPromo) {
+      player = ns.getPlayer();
+      const newJob = getCurrentJobAtCompany(player, company);
+      if (newJob !== jobBeforePromoApply) {
+        ns.tprint(
+          `Promoted at ${company}: ${jobBeforePromoApply ?? '(none)'} → ${newJob} (${nextPromo.repMultiplier}x rep).`,
+        );
+        return true;
+      }
+    }
+    player = ns.getPlayer();
+    currentJob = getCurrentJobAtCompany(player, company);
+  }
 
   const bestPosition = findBestRepPosition(player, companyRep);
   if (!bestPosition) {
@@ -789,7 +995,7 @@ async function applyForBestRepPosition(ns: NS, company: string): Promise<boolean
 
   const applied = await Do(ns, 'ns.singularity.applyToCompany', company, bestPosition.field);
   if (applied) {
-    const newJob = ((await Do(ns, 'ns.getPlayer')) as ExtendedPlayer).jobs?.[company];
+    const newJob = getCurrentJobAtCompany(ns.getPlayer(), company);
     if (newJob !== currentJob) {
       ns.tprint(`Promoted at ${company}: ${currentJob ?? '(none)'} → ${newJob} (${bestPosition.repMultiplier}x rep).`);
       return true;
@@ -802,7 +1008,7 @@ export async function takeActionToJoinFaction(
   ns: NS,
   faction: FactionWithRep & { name: string; inviteReqs?: PlayerRequirement[] },
 ): Promise<boolean> {
-  if (livePlayer(ns).factions.includes(faction.name)) {
+  if (ns.getPlayer().factions.includes(faction.name)) {
     return true;
   }
   const factionWithReqs: FactionWithRep & { name: string; inviteReqs: PlayerRequirement[] } =
@@ -830,7 +1036,7 @@ export async function takeActionToJoinFaction(
       ns.tprint(`joinFaction(${faction.name}) returned false.`);
       return false;
     }
-    if (!livePlayer(ns).factions.includes(faction.name)) {
+    if (!ns.getPlayer().factions.includes(faction.name)) {
       ns.tprint(`Join ${faction.name} did not apply (still not a member). Will not retry in a tight loop.`);
       return false;
     }
@@ -875,13 +1081,10 @@ export async function getFutureAugs(
     map[faction] = index;
     return map;
   }, {});
-  const base = livePlayer(ns);
-  const player: ExtendedPlayer = { ...base };
-  player.augmentations = (await Do(ns, 'ns.singularity.getOwnedAugmentations', true)) as string[];
-
+  const player = ns.getPlayer();
+  const ownedAugmentations = (await Do(ns, 'ns.singularity.getOwnedAugmentations', true)) as string[];
   const resetInfo = (await Do(ns, 'ns.getResetInfo')) as { currentNode: number };
-  player.currentNode = resetInfo.currentNode;
-  player.sourceFiles = (await Do(ns, 'ns.singularity.getOwnedSourceFiles')) as Array<{ n: number }>;
+  const ownedSourceFiles = (await Do(ns, 'ns.singularity.getOwnedSourceFiles')) as Array<{ n: number }>;
 
   const specialFactions: string[] = ['Church of the Machine God', 'Bladeburners'];
   if (await Do(ns, 'ns.gang.inGang')) {
@@ -911,6 +1114,8 @@ export async function getFutureAugs(
         ns,
         augExt.neededFactions,
         player,
+        resetInfo.currentNode,
+        ownedSourceFiles,
         specialFactions,
       );
       augExt.workableFaction = workableFaction;
@@ -925,7 +1130,7 @@ export async function getFutureAugs(
       return (
         aug.canAccess &&
         (!requireWorkable || aug.workableFaction) &&
-        !player.augmentations?.includes(aug.name) &&
+        !ownedAugmentations.includes(aug.name) &&
         (aug.moneyOnly || aug.workableFaction || aug.joinableFaction) &&
         averageValue(aug, domains ?? []) > 1.0
       );
@@ -972,7 +1177,9 @@ export function factionsToWork(
 export async function findBestFactionToWorkFor(
   ns: NS,
   factions: FactionWithRep[],
-  player: ExtendedPlayer,
+  player: Player,
+  currentNode: number,
+  sourceFiles: Array<{ n: number }>,
   specialFactions: string[],
 ): Promise<{ workableFaction: FactionWithRep | null; joinableFaction: FactionWithRep | null }> {
   const playerFactions = player.factions;
@@ -1027,10 +1234,10 @@ export async function findBestFactionToWorkFor(
     return requirements.every((requirement: PlayerRequirement) => {
       switch (requirement.type) {
         case 'bitNodeN':
-          return player.currentNode === (requirement as PlayerRequirement & { bitNodeN: number }).bitNodeN;
+          return currentNode === (requirement as PlayerRequirement & { bitNodeN: number }).bitNodeN;
         case 'sourceFile':
           return (
-            player.sourceFiles?.some(
+            sourceFiles.some(
               (sf: { n: number }) => sf.n === (requirement as PlayerRequirement & { sourceFile: number }).sourceFile,
             ) ?? false
           );
@@ -1063,7 +1270,7 @@ export async function findBestFactionToWorkFor(
   return { workableFaction, joinableFaction };
 }
 
-export function getWorkTypes(player: ExtendedPlayer): string[] {
+export function getWorkTypes(player: Player): string[] {
   if (player.skills.hacking > player.skills.strength) {
     return ['hacking contracts', 'field work', 'security'];
   } else {
@@ -1074,7 +1281,7 @@ export function getWorkTypes(player: ExtendedPlayer): string[] {
 /**
  * Returns the faction location group that the player is currently in
  */
-export function getPlayerLocationFactionGroup(player: ExtendedPlayer): string[][] {
+export function getPlayerLocationFactionGroup(player: Player): string[][] {
   const currentFactions = player.factions;
   return LOCATION_FACTION_GROUPS.filter((factions) => {
     return factions.some((faction) => currentFactions.includes(faction));

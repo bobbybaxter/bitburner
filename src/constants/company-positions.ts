@@ -133,3 +133,25 @@ export const BUSINESS_POSITIONS: CompanyPositionData[] = [
 export const REP_GRINDING_POSITIONS: CompanyPositionData[] = [...SOFTWARE_POSITIONS, ...IT_POSITIONS].sort(
   (a, b) => b.repMultiplier - a.repMultiplier || (a.reqdReputation ?? 0) - (b.reqdReputation ?? 0),
 );
+
+export function getCompanyPositionByTitle(title: string): CompanyPositionData | undefined {
+  for (const list of [SOFTWARE_POSITIONS, IT_POSITIONS, BUSINESS_POSITIONS]) {
+    const found = list.find((p) => p.title === title);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Positions for a career field (Software / IT / Business), in tier order within the source data. */
+export function getCompanyPositionsInField(field: string): CompanyPositionData[] {
+  switch (field) {
+    case 'Software':
+      return SOFTWARE_POSITIONS;
+    case 'IT':
+      return IT_POSITIONS;
+    case 'Business':
+      return BUSINESS_POSITIONS;
+    default:
+      return [];
+  }
+}
