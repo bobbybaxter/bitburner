@@ -21,8 +21,10 @@ import {
   instanceCount,
   launchSummaryTail,
   liquidate,
+  liquidateSlow,
   MARKET_CYCLE_LENGTH,
   purchaseOrder,
+  purchaseOrderPre4sEdgeFirst,
   refresh,
   runCommand,
   SLEEP_INTERVAL,
@@ -37,7 +39,9 @@ let session = new TradingSession();
 
 const argsSchema: ArgsSchemaEntry[] = [
   ['l', false], // Stop any other running stockmaster.js instances and sell all stocks
+  ['s', false], // Stop any other running stockmaster.js instances and sell stocks only when each position reaches break-even or better
   ['liquidate', false], // Long-form alias for the above flag.
+  ['liquidate-slow', false], // Long-form alias for slow liquidation mode.
   ['mock', false], // If set to true, will "mock" buy/sell but not actually buy/sell anything
   ['noisy', false], // If set to true, tprints and announces each time stocks are bought/sold
   ['disable-shorts', false], // If set to true, will not short any stocks. Will be set depending on having SF8.2 by default.
@@ -47,7 +51,7 @@ const argsSchema: ArgsSchemaEntry[] = [
   ['buy-threshold', 0.0001], // Buy only stocks forecasted to earn better than a 0.01% return (1 Basis Point)
   ['sell-threshold', 0], // Sell stocks forecasted to earn less than this return (default 0% - which happens when prob hits 50% or worse)
   ['diversification', 0.34], // Max fraction of portfolio as a single stock (relaxed to 2x with 4S data)
-  ['disableHud', true], // Disable showing stock value in the HUD panel
+  ['disableHud', false], // Disable showing stock value in the HUD panel
   ['disable-purchase-tix-api', false], // Disable purchasing the TIX API if you do not already have it.
   // The following settings are related only to tweaking pre-4s stock-market logic
   ['show-pre-4s-forecast', false], // If set to true, will always generate and display the pre-4s forecast (if false, it's only shown while we hold no stocks)
@@ -60,6 +64,9 @@ const argsSchema: ArgsSchemaEntry[] = [
   ['pre-4s-inversion-detection-window', 10], // This much history will be used to detect recent negative trends and act on them immediately. (Default 10)
   ['pre-4s-min-blackout-window', 10], // Do not make any new purchases this many ticks before the detected stock market cycle tick, to avoid buying a position that reverses soon after
   ['pre-4s-minimum-hold-time', 10], // A recently bought position must be held for this long before selling, to avoid rash decisions due to noise after a fresh market cycle. (Default 10)
+  ['pre-4s-prioritize-edge', true], // Pre-4S only: when buying, rank stocks by modeled edge (expected return) first so cash goes to the strongest signals; false = legacy (fastest spread recovery first)
+  ['pre-4s-near-prob-weight', 0.3], // Pre-4S: 0..1 fraction of near-term tick-up rate blended into prob (rest is long-term). Try 0.25–0.35 for faster reaction to momentum (noisier).
+  ['pre-4s-uncertainty-mult', 1], // Pre-4S: multiply inferred prob stddev (expectedReturn conservatism). Values below 1 (e.g. 0.75) assume less estimation error — riskier, can raise modeled edge.
   ['buy-4s-budget', 0.8], // Maximum corpus value we will sacrifice in order to buy 4S. Setting to 0 will never buy 4s.
 ];
 
@@ -76,7 +83,17 @@ export async function main(ns: NS): Promise<void> {
   if (!runOptions) return;
 
   const hasTixApiAccess = (await getNsDataThroughFile(ns, 'ns.stock.hasTIXAPIAccess()', '/Temp/hasTIX.txt')) as boolean;
-  if ((runOptions.l as boolean) || (runOptions.liquidate as boolean)) {
+  const immediateLiquidate = (runOptions.l as boolean) || (runOptions.liquidate as boolean);
+  const slowLiquidate = (runOptions.s as boolean) || (runOptions['liquidate-slow'] as boolean);
+  if (immediateLiquidate && slowLiquidate)
+    return sessionLog(
+      ns,
+      session,
+      'ERROR: Use only one liquidate mode at a time (--liquidate or --liquidate-slow).',
+      true,
+      'error',
+    );
+  if (immediateLiquidate || slowLiquidate) {
     if (!hasTixApiAccess)
       return sessionLog(
         ns,
@@ -88,12 +105,20 @@ export async function main(ns: NS): Promise<void> {
     sessionLog(ns, session, 'INFO: Killing any other stockmaster processes...', false, 'info');
     await runCommand(
       ns,
-      `ns.ps().filter(proc => proc.filename == '${ns.getScriptName()}' && !proc.args.includes('-l') && !proc.args.includes('--liquidate'))` +
+      `ns.ps().filter(proc => proc.filename == '${ns.getScriptName()}' && !proc.args.includes('-l') && !proc.args.includes('--liquidate')` +
+        ` && !proc.args.includes('-s') && !proc.args.includes('--liquidate-slow'))` +
         `.forEach(proc => ns.kill(proc.pid))`,
       '/Temp/kill-stockmarket-scripts.js',
     );
-    sessionLog(ns, session, 'INFO: Checking for and liquidating any stocks...', false, 'info');
-    await liquidate(ns, session);
+    sessionLog(
+      ns,
+      session,
+      `INFO: Checking for and ${slowLiquidate ? 'slow-liquidating (break-even/profit only)' : 'liquidating'} any stocks...`,
+      false,
+      'info',
+    );
+    if (slowLiquidate) await liquidateSlow(ns, session, SLEEP_INTERVAL);
+    else await liquidate(ns, session);
     return;
   }
   if ((await instanceCount(ns)) > 1) return;
@@ -106,7 +131,7 @@ export async function main(ns: NS): Promise<void> {
   const fracB = runOptions.fracB as number;
   const fracH = runOptions.fracH as number;
   const diversification = runOptions.diversification as number;
-  const disableHud = runOptions.disableHud || runOptions.liquidate || runOptions.mock;
+  const disableHud = runOptions.disableHud || runOptions.liquidate || runOptions['liquidate-slow'] || runOptions.mock;
   session.disableShorts = runOptions['disable-shorts'] as boolean;
   const pre4sBuyThresholdProbability = (runOptions['pre-4s-buy-threshold-probability'] ?? 0.15) as number;
   const pre4sMinBlackoutWindow = (runOptions['pre-4s-min-blackout-window'] ?? 1) as number;
@@ -283,7 +308,9 @@ export async function main(ns: NS): Promise<void> {
                   ? 30
                   : MARKET_CYCLE_LENGTH),
         );
-        for (const stk of allStocks.sort(purchaseOrder)) {
+        const purchaseRank =
+          pre4s && (runOptions['pre-4s-prioritize-edge'] ?? true) ? purchaseOrderPre4sEdgeFirst : purchaseOrder;
+        for (const stk of allStocks.sort(purchaseRank)) {
           if (cash <= 0) break;
           if (stk.blackoutWindow() >= MARKET_CYCLE_LENGTH - estTick) continue;
           if (pre4s && Math.max(pre4sMinHoldTime, pre4sMinBlackoutWindow) >= MARKET_CYCLE_LENGTH - estTick) continue;

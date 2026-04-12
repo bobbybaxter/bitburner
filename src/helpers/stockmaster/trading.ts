@@ -20,6 +20,11 @@ import { sessionLog } from './trading-session';
 export const purchaseOrder = (a: StockPosition, b: StockPosition): number =>
   Math.ceil(a.timeToCoverTheSpread()) - Math.ceil(b.timeToCoverTheSpread()) || b.absReturn() - a.absReturn();
 
+/** Pre-4S: prefer names with the strongest modeled edge first so limited cash goes to the best signals; tie-break by spread recovery. */
+export const purchaseOrderPre4sEdgeFirst = (a: StockPosition, b: StockPosition): number =>
+  b.absReturn() - a.absReturn() ||
+  Math.ceil(a.timeToCoverTheSpread()) - Math.ceil(b.timeToCoverTheSpread());
+
 export const formatBP = (fraction: number): string => formatNumberShort(fraction * 100 * 100, 3, 2) + ' BP';
 
 export async function doBuy(ns: NS, session: TradingSession, stk: StockPosition, sharesToBuy: number): Promise<number> {
@@ -235,6 +240,71 @@ export async function liquidate(ns: NS, session: TradingSession): Promise<void> 
     `Sold ${totalSharesLong.toLocaleString('en')} long shares and ${totalSharesShort.toLocaleString(
       'en',
     )} short shares ` + `in ${totalStocks} stocks for ${formatMoney(totalRevenue, 3)}`,
+    true,
+    'success',
+  );
+}
+
+export async function liquidateSlow(ns: NS, session: TradingSession, sleepInterval = 1000): Promise<void> {
+  session.allStockSymbols ??= await getStockSymbols(ns);
+  if (session.allStockSymbols == null) return;
+  let totalStocks = 0,
+    totalSharesLong = 0,
+    totalSharesShort = 0,
+    totalRevenue = 0,
+    totalProfit = 0;
+  while (true) {
+    const dictPositions = session.mock
+      ? null
+      : ((await getStockInfoDict(ns, session, 'getPosition')) as Record<string, [number, number, number, number]>);
+    if (dictPositions === null) return;
+    const dictBid = (await getStockInfoDict(ns, session, 'getBidPrice')) as Record<string, number>;
+    const dictAsk = (await getStockInfoDict(ns, session, 'getAskPrice')) as Record<string, number>;
+    let openPositions = 0;
+    let soldThisPass = 0;
+    for (const sym of session.allStockSymbols) {
+      const [sharesLong, avgLongCost, sharesShort, avgShortCost] = dictPositions[sym];
+      if (sharesLong + sharesShort === 0) continue;
+      openPositions++;
+      if (sharesLong > 0) {
+        const estProfitLong = sharesLong * (dictBid[sym] - avgLongCost) - 2 * COMMISSION;
+        if (estProfitLong >= 0) {
+          const sellPrice = Number(await sellStockWrapper(ns, sym, sharesLong));
+          totalStocks++;
+          soldThisPass++;
+          totalSharesLong += sharesLong;
+          totalRevenue += sellPrice * sharesLong - COMMISSION;
+          totalProfit += sharesLong * (sellPrice - avgLongCost) - 2 * COMMISSION;
+        }
+      }
+      if (sharesShort > 0) {
+        const estProfitShort = sharesShort * (avgShortCost - dictAsk[sym]) - 2 * COMMISSION;
+        if (estProfitShort >= 0) {
+          const buybackPrice = Number(await sellShortWrapper(ns, sym, sharesShort));
+          totalStocks++;
+          soldThisPass++;
+          totalSharesShort += sharesShort;
+          totalRevenue += (2 * avgShortCost - buybackPrice) * sharesShort - COMMISSION;
+          totalProfit += sharesShort * (avgShortCost - buybackPrice) - 2 * COMMISSION;
+        }
+      }
+    }
+    if (openPositions === 0) break;
+    if (soldThisPass > 0)
+      sessionLog(
+        ns,
+        session,
+        `INFO: Slow liquidation sold ${soldThisPass} profitable/break-even position(s). Waiting for remaining positions to recover...`,
+      );
+    await ns.sleep(sleepInterval);
+  }
+  sessionLog(
+    ns,
+    session,
+    `Slow-liquidated ${totalSharesLong.toLocaleString('en')} long shares and ${totalSharesShort.toLocaleString(
+      'en',
+    )} short shares ` +
+      `across ${totalStocks} closed positions for ${formatMoney(totalRevenue, 3)} (net P/L ${formatMoney(totalProfit, 3)}).`,
     true,
     'success',
   );

@@ -44,23 +44,24 @@ export function scoreTargetForBatch(ns: NS, hostname: string, referenceHackFract
 
 /**
  * Same candidate rules as hack3 batch targets: rooted, hackable level, not home/purchased, has money.
- * Highest {@link scoreTargetForBatch} wins (same ordering chooseTargets uses for prep priority).
+ * Returns candidates sorted by descending {@link scoreTargetForBatch} (best first).
  */
-export function pickBestScoredHackTarget(ns: NS, hostnames: readonly string[], fallback = 'n00dles'): string {
+export function rankHackTargetsByScore(ns: NS, hostnames: readonly string[]): string[] {
   const hackingLevel = ns.getHackingLevel();
   const purchased = new Set(ns.getPurchasedServers());
-  let best: string | null = null;
-  let bestScore = Number.NEGATIVE_INFINITY;
+  const ranked: Array<{ hostname: string; score: number }> = [];
   for (const hostname of hostnames) {
     if (hostname === 'home' || purchased.has(hostname)) continue;
     if (ns.getServerMaxMoney(hostname) < 1) continue;
     if (ns.getServerRequiredHackingLevel(hostname) > hackingLevel) continue;
     if (!ns.hasRootAccess(hostname)) continue;
-    const score = scoreTargetForBatch(ns, hostname);
-    if (score > bestScore) {
-      bestScore = score;
-      best = hostname;
-    }
+    ranked.push({ hostname, score: scoreTargetForBatch(ns, hostname) });
   }
-  return best ?? fallback;
+  ranked.sort((a, b) => b.score - a.score);
+  return ranked.map((entry) => entry.hostname);
+}
+
+/** Backward-compatible helper for callers that only need the top target. */
+export function pickBestScoredHackTarget(ns: NS, hostnames: readonly string[], fallback = 'n00dles'): string {
+  return rankHackTargetsByScore(ns, hostnames)[0] ?? fallback;
 }

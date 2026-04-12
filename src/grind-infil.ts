@@ -380,9 +380,7 @@ function goalMet(ns: NS, mode: 'money' | 'faction', faction: string, target: num
 
 function ensureInfiltrateHelperActive(ns: NS): void {
   if (!isInfiltrateAutomationActive()) {
-    ns.tprint(
-      'WARN: Infiltrate automation is inactive (no window.tmrAutoInf). Minigames will not auto-complete. Run: run infiltrate.js',
-    );
+    ns.run('infiltrate.js', 1);
   }
 }
 

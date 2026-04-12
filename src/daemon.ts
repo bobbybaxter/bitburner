@@ -6,7 +6,7 @@ import {
   parseAutoCompleteDataFromDefaultConfig,
 } from '/libs/NetscriptExtension';
 import { corporationEventLogger } from './helpers/corpo/corporation-event-logger';
-import { CorpState, UnlockName } from './helpers/corpo/corporation-formulas';
+import { CorpState, EmployeePosition, UnlockName } from './helpers/corpo/corporation-formulas';
 import {
   buyOptimalAmountOfInputMaterials,
   buyTeaAndThrowPartyForAllDivisions,
@@ -15,7 +15,6 @@ import {
   loopAllDivisionsAndCities,
   setOptimalSellingPriceForEverything,
   setSmartSupplyData,
-  showWarning,
   validateProductMarkupMap,
   waitForNumberOfCycles,
   waitUntilAfterStateHappens,
@@ -111,9 +110,7 @@ export async function main(nsContext: NS): Promise<void> {
         });
       }
 
-      if (!saveForProductMode) {
-        await buyTeaAndThrowPartyForAllDivisions(ns);
-      }
+      await buyTeaAndThrowPartyForAllDivisions(ns);
 
       // Smart Supply
       if (!smartSupplyHasBeenEnabledEverywhere) {
@@ -139,10 +136,19 @@ export async function main(nsContext: NS): Promise<void> {
           // Check for Unassigned employees
           const unassignedEmployees = office.employeeJobs.Unassigned;
           if (unassignedEmployees > 0) {
-            showWarning(
-              ns,
-              `WARNING: There are ${unassignedEmployees} unassigned employees in division ${divisionName}`,
+            const rndCount = office.employeeJobs['Research & Development'];
+            const ok = ns.corporation.setAutoJobAssignment(
+              divisionName,
+              city,
+              EmployeePosition.RESEARCH_DEVELOPMENT,
+              rndCount + unassignedEmployees,
             );
+            if (!ok) {
+              ns.print(
+                `Daemon: could not move ${unassignedEmployees} unassigned employees to R&D ` +
+                  `(${divisionName}, ${city})`,
+              );
+            }
           }
         });
         // Remove nonexistent product in productMarkupMap

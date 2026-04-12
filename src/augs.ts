@@ -6,7 +6,7 @@ Long-running script that works to unlock and buy augmentations automatically.
 Loops between gaining faction reputation and purchasing available augmentations.
 
 Usage:
-run /augs.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ]
+run /augs.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ] [ --no-reset ]
 
 */
 import type { NS } from '@ns';
@@ -27,6 +27,7 @@ const FLAGS: [string, string | number | boolean | string[]][] = [
   ['help', false],
   ['threshold', 10],
   ['cheap', false],
+  ['no-reset', false],
 ];
 
 export function autocomplete(
@@ -43,6 +44,7 @@ export async function main(ns: NS): Promise<void> {
   ns.clearLog();
 
   const flags = ns.flags(FLAGS);
+  const noReset = Boolean((flags as { 'no-reset'?: boolean })['no-reset']);
   let domains: string[] = Array.isArray(flags._) ? (flags._ as string[]) : [flags._ as string];
   if (domains.length === 0) {
     domains = ['all'];
@@ -56,7 +58,10 @@ export async function main(ns: NS): Promise<void> {
         'Long-running script that works to unlock and buy augmentations automatically.',
         '',
         'Usage: ',
-        `> ${ns.getScriptName()} [ ${Object.keys(DOMAINS).join(' | ')} ... ] [ --threshold N ]`,
+        `> ${ns.getScriptName()} [ ${Object.keys(DOMAINS).join(' | ')} ... ] [ --threshold N ] [ --no-reset ]`,
+        '',
+        '  --no-reset: never run endgame (NFG dump + installAugmentations) when --cheap, --threshold,',
+        '  or "no more augs" would normally trigger a reset.',
         '',
         'Example: Automatically unlock and buy all hacking augmentations.',
         `> run ${ns.getScriptName()} hacking`,
@@ -81,26 +86,54 @@ export async function main(ns: NS): Promise<void> {
     }
   }
 
-  ns.tprint(`Augmentation auto-pilot started for: ${domains.join(', ')}`);
+  ns.tprint(
+    `Augmentation auto-pilot started for: ${domains.join(', ')}${noReset ? ' (--no-reset: no auto install/reset)' : ''}`,
+  );
 
   let moneyOnlyLogged = false;
+  let noResetCheapPendingLogged = false;
+  let noResetOverThresholdLogged = false;
 
   while (true) {
-    const futureAugs = await getFutureAugs(ns, { domains });
+    let futureAugs = await getFutureAugs(ns, { domains });
+    // getFutureAugs omits augs that are already purchasable (have rep + money). After a corp bribe or other
+    // rep gain, targets can vanish from this list while purchaseAugmentation has not run yet — buy before endgame.
     if (futureAugs.length === 0) {
-      ns.tprint('No more non-NFG augmentations to unlock or buy. Starting endgame...');
-      await buyNfgAndInstall(ns);
-      break;
+      await buyAugs(ns, domains, { cheap: !!flags.cheap });
+      futureAugs = await getFutureAugs(ns, { domains });
+      if (futureAugs.length === 0) {
+        if (noReset) {
+          ns.tprint(
+            'No more non-NFG augmentations to unlock or buy. --no-reset: skipping NFG + install/reset. Exiting script.',
+          );
+          break;
+        }
+        ns.tprint('No more non-NFG augmentations to unlock or buy. Starting endgame...');
+        await buyNfgAndInstall(ns);
+        break;
+      }
     }
 
     await buyAugs(ns, domains, { cheap: !!flags.cheap });
 
     if (flags.cheap) {
       const pendingInstall = await countPurchasedPendingInstall(ns);
+      if (pendingInstall < 10) {
+        noResetCheapPendingLogged = false;
+      }
       if (pendingInstall >= 10) {
-        ns.tprint(`--cheap: ${pendingInstall} augmentations purchased pending install (≥10). Starting endgame...`);
-        await buyNfgAndInstall(ns);
-        break;
+        if (noReset) {
+          if (!noResetCheapPendingLogged) {
+            ns.tprint(
+              `--cheap: ${pendingInstall} augmentations purchased pending install (≥10). --no-reset: skipping endgame; continuing.`,
+            );
+            noResetCheapPendingLogged = true;
+          }
+        } else {
+          ns.tprint(`--cheap: ${pendingInstall} augmentations purchased pending install (≥10). Starting endgame...`);
+          await buyNfgAndInstall(ns);
+          break;
+        }
       }
     }
 
@@ -111,14 +144,31 @@ export async function main(ns: NS): Promise<void> {
     if (!hasRepWork && refreshedAugs.length > 0) {
       const nextPrice = nextAug.price ?? Infinity;
       const money = ns.getPlayer().money;
-      if (nextAug.name !== 'The Red Pill' && nextPrice > money * threshold) {
-        ns.tprint(
-          `Next aug "${nextAug.name}" costs ${ns.formatNumber(nextPrice)} ` +
-            `(>${threshold}x current ${ns.formatNumber(money)}). Starting endgame...`,
-        );
-        await buyNfgAndInstall(ns);
-        break;
+      const overMoneyThreshold = nextAug.name !== 'The Red Pill' && nextPrice > money * threshold;
+      if (!overMoneyThreshold) {
+        noResetOverThresholdLogged = false;
       }
+      if (overMoneyThreshold) {
+        if (noReset) {
+          if (!noResetOverThresholdLogged) {
+            ns.tprint(
+              `Next aug "${nextAug.name}" costs ${ns.formatNumber(nextPrice)} ` +
+                `(>${threshold}x current ${ns.formatNumber(money)}). --no-reset: skipping endgame; waiting for money.`,
+            );
+            noResetOverThresholdLogged = true;
+          }
+          moneyOnlyLogged = false;
+        } else {
+          ns.tprint(
+            `Next aug "${nextAug.name}" costs ${ns.formatNumber(nextPrice)} ` +
+              `(>${threshold}x current ${ns.formatNumber(money)}). Starting endgame...`,
+          );
+          await buyNfgAndInstall(ns);
+          break;
+        }
+      }
+    } else {
+      noResetOverThresholdLogged = false;
     }
 
     if (hasRepWork) {

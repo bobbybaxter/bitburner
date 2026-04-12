@@ -1,7 +1,14 @@
 //
-import { NS, Server } from '@ns';
+import { AutocompleteData, NS, Server } from '@ns';
 import { computeThreadsPerBatch, getOptimalServer, scoreTargetForBatch } from '/helpers/hack-target-score.js';
 import { disableNoisyLogs, formulas, getServerNames } from '/helpers/index.js';
+
+const hack3Flags: [string, string | number | boolean | string[]][] = [['hacknet-perc', 0]];
+
+export function autocomplete(data: AutocompleteData, _flags: string[]): string[] {
+  data.flags(hack3Flags);
+  return [];
+}
 
 type BatchEvent = { host: string; target: string; threads: number; type: string };
 
@@ -55,6 +62,9 @@ const targetStaggerMs = 100;
 
 export async function main(ns: NS): Promise<void> {
   disableNoisyLogs(ns);
+  const flags = ns.flags(hack3Flags) as { 'hacknet-perc': number };
+  const hacknetPerc = Math.max(0, Math.min(100, Number(flags['hacknet-perc']) || 0));
+
   let cachedServerNames: ReturnType<typeof getServerNames> | null = null;
   let lastServerNamesTime = 0;
 
@@ -77,8 +87,13 @@ export async function main(ns: NS): Promise<void> {
         if (name === 'pserv-share') continue;
         if (!hostCandidates.has(name)) hostCandidates.set(name, { hostname: name, name, depth: 1 });
       }
+      const hacknetHostnames = [...hostCandidates.keys()].filter((hostname) => hostname.startsWith('hacknet')).sort();
+      const hacknetIncludeCount = Math.floor((hacknetHostnames.length * hacknetPerc) / 100);
+      const hacknetIncludedInAvailable = new Set(hacknetHostnames.slice(0, hacknetIncludeCount));
+
       const availableServers = [...hostCandidates.values()].filter((server) => {
         if (server.hostname === 'pserv-share') return false;
+        if (server.hostname.startsWith('hacknet') && !hacknetIncludedInAvailable.has(server.hostname)) return false;
         try {
           return ns.hasRootAccess(server.hostname) && ns.getServerMaxRam(server.hostname) >= scriptBaseCost;
         } catch {
@@ -174,7 +189,7 @@ export async function main(ns: NS): Promise<void> {
         `cycle ${cycleCount}: ${hostServers.length} hosts, ${targetServers.length} targets, ${totalThreads} threads, ${totalRunningScripts} running scripts`,
       );
       if (totalRunningScripts >= maxTotalRunningScripts) {
-        ns.tprint(
+        ns.print(
           `[hack3] cycle ${cycleCount}: ${totalRunningScripts} scripts running (>= ${maxTotalRunningScripts}), pausing 5s`,
         );
         await ns.sleep(5000);
@@ -234,8 +249,6 @@ async function chooseTargets({
 
   const finalTargetServers = targetServers.map((s) => ({ ...s, batches: [...s.batches] }));
 
-  // while (finalHostServerThreads > 0) {
-  // for (let i = 0; i < 1; i++) {
   let finalHostServerThreads = finalHostServers.reduce((acc, server) => acc + server.availableThreads, 0);
 
   if (finalHostServerThreads < 2) {

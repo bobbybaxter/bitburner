@@ -63,7 +63,17 @@ import {
   tryGetStockMarketAccess,
 } from './stock-api';
 import { StockPosition } from './stock-position';
-import { doBuy, doSellAll, doStatusUpdate, formatBP, liquidate, purchaseOrder, tryGet4SApi } from './trading';
+import {
+  doBuy,
+  doSellAll,
+  doStatusUpdate,
+  formatBP,
+  liquidate,
+  liquidateSlow,
+  purchaseOrder,
+  purchaseOrderPre4sEdgeFirst,
+  tryGet4SApi,
+} from './trading';
 import type { BatchedStockData, BitNodeMults } from './trading-session';
 import { sessionLog, TradingSession } from './trading-session';
 import { tryGetBitNodeMultipliers } from './try-get-bit-node-multipliers';
@@ -121,6 +131,7 @@ export {
   INVERSION_LAG_TOLERANCE,
   launchSummaryTail,
   liquidate,
+  liquidateSlow,
   log,
   LOG_DEDUP_MS,
   MARKET_CYCLE_LENGTH,
@@ -129,6 +140,7 @@ export {
   parseShortNumber,
   pathJoin,
   purchaseOrder,
+  purchaseOrderPre4sEdgeFirst,
   refresh,
   runCommand,
   runCommand_Custom,

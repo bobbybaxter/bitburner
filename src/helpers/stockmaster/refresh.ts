@@ -187,8 +187,13 @@ export async function updateForecast(
       stk.priceHistory.length,
     );
     if (!has4s) {
-      stk.prob = stk.longTermForecast;
-      stk.probStdDev = Math.sqrt((stk.prob * (1 - stk.prob)) / probWindowLength);
+      const w = Math.min(1, Math.max(0, Number(session.options['pre-4s-near-prob-weight'] ?? 0)));
+      stk.prob =
+        w === 0
+          ? stk.longTermForecast
+          : Math.min(0.99, Math.max(0.01, stk.longTermForecast * (1 - w) + stk.nearTermForecast * w));
+      const uMult = Math.max(0, Number(session.options['pre-4s-uncertainty-mult'] ?? 1));
+      stk.probStdDev = Math.sqrt((stk.prob * (1 - stk.prob)) / probWindowLength) * uMult;
     }
     const signalStrength =
       1 +

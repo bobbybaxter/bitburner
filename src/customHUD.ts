@@ -156,6 +156,17 @@ function updateRemoteApiHudCell(hudRemoteApi: HTMLElement): void {
   hudRemoteApi.innerText = label;
 }
 
+function setHudRowVisibility(labelElementId: string, valueElementId: string, visible: boolean): void {
+  const labelElement = doc.getElementById(labelElementId);
+  const valueElement = doc.getElementById(valueElementId);
+  if (labelElement) {
+    labelElement.style.display = visible ? '' : 'none';
+  }
+  if (valueElement) {
+    valueElement.style.display = visible ? '' : 'none';
+  }
+}
+
 function removeTestingTool() {
   const testingToolsDiv = doc.querySelector('#testing-tools');
   // Remove old tools
@@ -488,10 +499,12 @@ export async function main(nsContext: NS): Promise<void> {
     mountStockHudRowsUnderMoney(doc);
   }
   if (ns.corporation.hasCorporation()) {
-    headers.push('<div>InvestmentOffer</div>');
-    values.push("<div id='hud-investment-offer'>0</div>");
-    headers.push('<div>CorpMaintain</div>');
-    values.push("<div id='hud-corp-maintain'>false</div>");
+    headers.push("<div id='hud-total-funds-label'>TotalFunds</div>");
+    values.push("<div id='hud-total-funds-row'><div id='hud-total-funds'>0</div></div>");
+    headers.push("<div id='hud-investment-offer-label'>InvestmentOffer</div>");
+    values.push("<div id='hud-investment-offer-row'><div id='hud-investment-offer'>0</div></div>");
+    headers.push("<div id='hud-corp-maintain-label'>CorpMaintain</div>");
+    values.push("<div id='hud-corp-maintain-row'><div id='hud-corp-maintain'>false</div></div>");
   }
 
   hook0.innerHTML = headers.join('');
@@ -555,12 +568,25 @@ export async function main(nsContext: NS): Promise<void> {
       }
 
       if (ns.corporation.hasCorporation()) {
+        const hudTotalFundsValue = doc.getElementById('hud-total-funds');
+        if (hudTotalFundsValue === null) {
+          rerun(ns);
+          return;
+        }
+        hudTotalFundsValue.innerText = ns.formatNumber(ns.corporation.getCorporation().funds);
+
         const hudInvestmentOfferValue = doc.getElementById('hud-investment-offer');
         if (hudInvestmentOfferValue === null) {
           rerun(ns);
           return;
         }
-        hudInvestmentOfferValue.innerText = ns.formatNumber(ns.corporation.getInvestmentOffer().funds);
+        const investmentOffer = ns.corporation.getInvestmentOffer();
+        const hasRemainingInvestmentOffers =
+          investmentOffer.round >= 1 && investmentOffer.round <= 4 && investmentOffer.funds > 0;
+        setHudRowVisibility('hud-investment-offer-label', 'hud-investment-offer-row', hasRemainingInvestmentOffers);
+        if (hasRemainingInvestmentOffers) {
+          hudInvestmentOfferValue.innerText = ns.formatNumber(investmentOffer.funds);
+        }
 
         let isDaemonRunning = false;
         ns.ps().forEach((process) => {

@@ -105,6 +105,93 @@ export async function Do(ns: NS, command: string, ...args: unknown[]): Promise<u
   return answer === 'UnDeFiNeDaF' ? null : answer;
 }
 
+/** Walk from `pathFromHome[pathFromHome.length-1]` to `home` using only neighbor connects. */
+const SINGULARITY_WALK_TO_HOME_FROM_PATH = `const pathFromHome = JSON.parse(ns.args[0]);
+    for (let _i = pathFromHome.length - 2; _i >= 0; _i--) {
+      if (!ns.singularity.connect(pathFromHome[_i])) {
+        throw new Error('connect failed toward ' + pathFromHome[_i]);
+      }
+    }
+    if (!ns.singularity.connect('home')) {
+      throw new Error('connect home failed');
+    }`;
+
+/**
+ * Moves the terminal to home using only neighbor connects (required by the singularity API).
+ * @param pathFromHome Shortest path from home to the server you are on (`getPathFromHomeTo` in `/helpers/get-path-from-home`).
+ */
+export async function DoSingularityConnectToHome(ns: NS, pathFromHome: string[]): Promise<unknown> {
+  const command = 'connectToHome';
+  const progname = '/temp/proc-' + uniqueID(command);
+  writeIfNotSame(
+    ns,
+    progname + '.js',
+    `export async function main(ns) {
+  try {
+    ${SINGULARITY_WALK_TO_HOME_FROM_PATH}
+    ns.writePort(ns.pid, JSON.stringify(null), 'w');
+  } catch (e) {
+    ns.writePort(ns.pid, JSON.stringify({ ${DO_ERROR_MARKER}: true, message: (e && e.message) || String(e) }), 'w');
+  }
+}`,
+  );
+  let pid = ns.run(progname + '.js', 1, JSON.stringify(pathFromHome));
+  let z = -1;
+  while (0 == pid) {
+    z += 1;
+    await ns.asleep(z);
+    pid = ns.run(progname + '.js', 1, JSON.stringify(pathFromHome));
+  }
+  await ns.getPortHandle(pid).nextWrite();
+  const answer = JSON.parse(ns.readPort(pid));
+  if (answer && typeof answer === 'object' && answer[DO_ERROR_MARKER] === true) {
+    const msg = answer.message ?? 'Unknown error';
+    ns.tprint(`DoSingularityConnectToHome error: ${msg}`);
+    throw new Error(msg);
+  }
+  return answer === 'UnDeFiNeDaF' ? null : answer;
+}
+
+/**
+ * After navigating to the target with {@link Do}(connect, …), installs a backdoor, waits for the
+ * install to finish, then walks the terminal home (one neighbor at a time). Waiting before moving
+ * avoids connect() failing while the backdoor UI is active (often leaving you stuck on e.g. n00dles).
+ * @param pathFromHome Shortest path from home to the backdoor target (`getPathFromHomeTo`).
+ */
+export async function DoSingularityInstallBackdoorReturnHome(ns: NS, pathFromHome: string[]): Promise<unknown> {
+  const command = 'installBackdoorReturnHome';
+  const progname = '/temp/proc-' + uniqueID(command);
+  writeIfNotSame(
+    ns,
+    progname + '.js',
+    `export async function main(ns) {
+  try {
+    const p = ns.singularity.installBackdoor();
+    await p;
+    ${SINGULARITY_WALK_TO_HOME_FROM_PATH}
+    ns.writePort(ns.pid, JSON.stringify(null), 'w');
+  } catch (e) {
+    ns.writePort(ns.pid, JSON.stringify({ ${DO_ERROR_MARKER}: true, message: (e && e.message) || String(e) }), 'w');
+  }
+}`,
+  );
+  let pid = ns.run(progname + '.js', 1, JSON.stringify(pathFromHome));
+  let z = -1;
+  while (0 == pid) {
+    z += 1;
+    await ns.asleep(z);
+    pid = ns.run(progname + '.js', 1, JSON.stringify(pathFromHome));
+  }
+  await ns.getPortHandle(pid).nextWrite();
+  const answer = JSON.parse(ns.readPort(pid));
+  if (answer && typeof answer === 'object' && answer[DO_ERROR_MARKER] === true) {
+    const msg = answer.message ?? 'Unknown error';
+    ns.tprint(`DoSingularityInstallBackdoorReturnHome error: ${msg}`);
+    throw new Error(msg);
+  }
+  return answer === 'UnDeFiNeDaF' ? null : answer;
+}
+
 // Writes a command to a file, runs against every argument, and then returns the result as an object. On failure, logs and rethrows.
 export async function DoAll(ns: NS, command: string, args: unknown[]): Promise<unknown> {
   const progname = '/temp/procA-' + uniqueID(command);
