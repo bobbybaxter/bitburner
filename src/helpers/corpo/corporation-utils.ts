@@ -746,7 +746,6 @@ export async function getCorporationUpgradeLevels(ns: NS): Promise<CorporationUp
   const corporationUpgradeLevels: CorporationUpgradeLevels = {
     [UpgradeName.SMART_FACTORIES]: 0,
     [UpgradeName.SMART_STORAGE]: 0,
-    // [UpgradeName.DREAM_SENSE]: 0,
     [UpgradeName.WILSON_ANALYTICS]: 0,
     [UpgradeName.NUOPTIMAL_NOOTROPIC_INJECTOR_IMPLANTS]: 0,
     [UpgradeName.SPEECH_PROCESSOR_IMPLANTS]: 0,

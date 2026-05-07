@@ -15,6 +15,10 @@ const CONFIG = {
   sleepMs: 3000,
 };
 
+function normalizeCloudHostname(hostname: string): string {
+  return hostname.trim();
+}
+
 /** Valid purchased-server RAM sizes: 2, 4, 8, … up to game cap. */
 function ramTiers(maxRam: number): number[] {
   const tiers: number[] = [];
@@ -116,13 +120,19 @@ export async function main(ns: NS): Promise<void> {
       const ram = bestPurchasableRam(ns, cash, th);
       const hostname = nextMissingHostname(limit, owned);
       if (ram != null && hostname != null) {
+        const normalizedHostname = normalizeCloudHostname(hostname);
+        if (!normalizedHostname) {
+          ns.tprint(`WARN: skipping purchase due to invalid hostname "${hostname}"`);
+          await ns.asleep(CONFIG.sleepMs);
+          continue;
+        }
         const cost = ns.cloud.getServerCost(ram);
-        const result = ns.cloud.purchaseServer(hostname, ram);
+        const result = ns.cloud.purchaseServer(normalizedHostname, ram);
         if (result) {
           ns.tprint(`${result}:${ram} purchased for ${formatter.format(cost)}`);
-          if (hostname === SHARE_NAME) ns.run(SHARE_SCRIPT);
+          if (normalizedHostname === SHARE_NAME) ns.run(SHARE_SCRIPT);
         } else {
-          ns.tprint(`WARN: purchase failed for ${hostname} @ ${ram}GB`);
+          ns.tprint(`WARN: purchase failed for ${normalizedHostname} @ ${ram}GB`);
         }
       } else {
         console.log('Next: purchase (waiting for funds / threshold)');

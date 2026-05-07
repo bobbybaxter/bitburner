@@ -1,5 +1,3 @@
-// 7.45GB RAM
-
 import { Hacknet, NS } from '@ns';
 import { localISOString } from './helpers/local-iso-string.js';
 

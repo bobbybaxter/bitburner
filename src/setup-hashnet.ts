@@ -1,10 +1,10 @@
-import { NS } from '@ns';
+//
+import { NS, Server } from '@ns';
 import { art } from '/helpers/art';
 import { rankHackTargetsByScore } from '/helpers/hack-target-score.js';
 import { hms } from '/helpers/hms';
 import { numPad } from '/helpers/num-pad';
 
-/** @param {NS} ns */
 export async function main(ns: NS) {
   ns.disableLog('ALL');
   const colorPalette = {
@@ -106,10 +106,12 @@ export async function main(ns: NS) {
     'Clarke Incorporated',
     'Fulcrum Technologies',
   ];
-  const hashCompanyFavorTargetChoice = (await ns.prompt('Choose Company Favor Target', {
-    type: 'select',
-    choices: hashCompanyFavorTargetChoices,
-  })) as (typeof hashCompanyFavorTargetChoices)[number];
+  const hashCompanyFavorTargetChoice = hashCompanyFavorPerms
+    ? ((await ns.prompt('Choose Company Favor Target', {
+        type: 'select',
+        choices: hashCompanyFavorTargetChoices,
+      })) as (typeof hashCompanyFavorTargetChoices)[number])
+    : null;
   const hashCompanyFavorTarget = hashCompanyFavorTargetChoice ?? 'Bachman & Associates';
   const sellForMoneyRate = sellForMoneyRateByChoice[sellForMoneyRateChoice] ?? 0.1;
   const loopSleepMs = 100;
@@ -123,10 +125,12 @@ export async function main(ns: NS) {
     ns.clearLog();
     const rankedTargets = target === 'all' ? rankHackTargetsByScore(ns, choices) : [target as string];
     const resolvedMaxMoneyTarget = rankedTargets[0] ?? 'n00dles';
+    const resolvedMaxMoneyServer = ns.getServer(resolvedMaxMoneyTarget) as Server;
     const resolvedMinSecTarget =
-      rankedTargets.find((hostname) => (ns.getServer(hostname)?.minDifficulty ?? 1) > 1) ?? resolvedMaxMoneyTarget;
-    const targetMinSec = ns.getServer(resolvedMinSecTarget).minDifficulty;
-    const targetMaxMon = ns.getServer(resolvedMaxMoneyTarget).moneyMax;
+      rankedTargets.find(() => (resolvedMaxMoneyServer?.minDifficulty ?? 1) > 1) ?? resolvedMaxMoneyTarget;
+    const resolvedMinSecServer = ns.getServer(resolvedMinSecTarget) as Server;
+    const targetMinSec = resolvedMinSecServer?.minDifficulty ?? 0;
+    const targetMaxMon = resolvedMaxMoneyServer?.moneyMax ?? 0;
     ns.print(art('-------Script Stats--------', { color: colorPalette.titlebar }));
     ns.print(`Script start: ${art(scriptStartTime.toLocaleString(), { color: colorPalette.starttime })}`);
     const scriptCurrentTime = new Date();
@@ -255,7 +259,7 @@ export async function main(ns: NS) {
       }
     }
 
-    const companyFavorCost = ns.hacknet.hashCost('Exchange for Company Favor');
+    const companyFavorCost = ns.hacknet.hashCost('Company Favor');
     if (budget > companyFavorCost && hashCompanyFavorPerms) {
       if (ns.hacknet.spendHashes('Company Favor', hashCompanyFavorTarget)) {
         hashCompanyFavor++;

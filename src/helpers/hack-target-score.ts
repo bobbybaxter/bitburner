@@ -52,8 +52,9 @@ export function rankHackTargetsByScore(ns: NS, hostnames: readonly string[]): st
   const ranked: Array<{ hostname: string; score: number }> = [];
   for (const hostname of hostnames) {
     if (hostname === 'home' || purchased.has(hostname)) continue;
-    if (ns.getServerMaxMoney(hostname) < 1) continue;
-    if (ns.getServerRequiredHackingLevel(hostname) > hackingLevel) continue;
+    const server = ns.getServer(hostname) as Partial<Server>;
+    if ((server.moneyMax ?? 0) < 1) continue;
+    if ((server.requiredHackingSkill ?? 0) > hackingLevel) continue;
     if (!ns.hasRootAccess(hostname)) continue;
     ranked.push({ hostname, score: scoreTargetForBatch(ns, hostname) });
   }

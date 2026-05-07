@@ -1,0 +1,491 @@
+API BREAK INFO FOR 3.0.0
+
+You cannot use the deprecated VSCode extension to connect to the Steam app via API server now. You have to use Remote API to connect your external editors to Bitburner.
+For more information, please check the Remote API page in the Documentation tab. If you have a question, please ask us on #external-editors on Discord (https://discord.gg/TFc3hKD).
+
+
+
+The formatting functions have been moved to their own interface, ns.format.
+Each function has been replaced with their corresponding interface variant.
+Additionally, the naming of ns.tFormat has been changed to ns.format.time.
+
+Usage of the following functions may have been affected:
+ns.formatNumber
+ns.formatRam
+ns.formatPercent
+ns.tFormat
+
+Potentially affected files on server home (with line numbers):
+test.js: (Line number: 19)
+hacknet-opt.js: (Line numbers: 175, 187, 202, 206, 209, 211)
+augmentations/unlock.js: (Line numbers: 31, 49, 54, 104, 110, 125, 135, 177, 473, 579, 587, 653)
+augmentations/info.js: (Line numbers: 39, 52, 53)
+augmentations/graft.js: (Line number: 53)
+augmentations/buy.js: (Line numbers: 60, 81, 91, 118)
+hack2-helpers/find-best-config.js: (Line number: 48)
+kill-stocks.js: (Line numbers: 27, 42)
+augs.js: (Line numbers: 117, 118, 124, 125, 141)
+helpers/hack2/find-best-config.js: (Line number: 48)
+home-opt.js: (Line numbers: 19, 25, 32, 33)
+corpo.js: (Line numbers: 124, 200)
+helpers/corpo/corporation-utils.js: (Line numbers: 205, 641, 1061, 1062, 1104, 1105, 1353, 1425, 1517, 1518, 1538, 1542, 1543, 1555, 1557, 1563, 1564, 1570, 1571, 1574)
+libs/NetscriptExtension.js: (Line numbers: 198, 248, 288)
+corporation.js: (Line numbers: 296, 313, 316, 336, 339, 340, 350, 364, 456, 459, 531, 533, 590, 592, 595, 597, 653, 654, 768, 788, 793, 820, 841, 842, 843, 844, 846, 847, 861, 862, 880, 881, 898, 899, 953, 967, 979, 993, 1177, 1219, 1292, 1466, 1467, 1477, 1597)
+customHUD.js: (Line numbers: 525, 534, 549, 559)
+daemon.js: (Line numbers: 61, 62)
+grind-infil.js: (Line numbers: 387, 416, 536, 539, 549, 552, 597)
+setup-hashnet.js: (Line numbers: 177, 178, 180, 181, 295, 297, 299, 301, 324, 326, 328)
+hash-servers.js: (Line numbers: 100, 114, 115, 123)
+bladeburner-info.js: (Line numbers: 31, 36, 37, 39, 40, 43, 49, 50, 51, 52, 53, 54, 55, 61, 62)
+helpers/bladeburner/hyperdrive-bulk-buyer.js: (Line number: 14)
+helpers/bladeburner/clean-up.js: (Line numbers: 18, 24, 31, 39, 54)
+helpers/gangs/helpers.js: (Line number: 1051)
+manual-hack-loop.js: (Line number: 52)
+server-table.js: (Line numbers: 28, 29)
+
+
+
+ns.tail() was removed.
+It has been automatically replaced with "ns.ui.openTail()".
+
+ns.moveTail() was removed.
+It has been automatically replaced with "ns.ui.moveTail()".
+
+ns.resizeTail() was removed.
+It has been automatically replaced with "ns.ui.resizeTail()".
+
+ns.closeTail() was removed.
+It has been automatically replaced with "ns.ui.closeTail()".
+
+ns.setTitle() was removed.
+It has been automatically replaced with "ns.ui.setTailTitle()".
+
+Usage of the following functions may have been affected:
+ns.tail
+ns.moveTail
+ns.resizeTail
+ns.closeTail
+ns.setTitle
+
+Potentially affected files on server home (with line numbers):
+helpers/stockmaster-helpers.js: (Line number: 453)
+augmentations/auto.js: (Line number: 48)
+
+
+
+ns.corporation.setAutoJobAssignment() was removed.
+It has been automatically replaced with "ns.corporation.setJobAssignment()".
+
+Usage of the following functions may have been affected:
+ns.corporation.setAutoJobAssignment
+
+Potentially affected files on server home (with line numbers):
+corpo.js: (Line numbers: 105, 109, 114, 115, 116, 145, 155, 161)
+temp/proc-yyvFf.js: (Line number: 3)
+helpers/corpo/build-rp.js: (Line numbers: 22, 26, 38, 47, 55)
+helpers/corpo/corporation-utils.js: (Line numbers: 425, 451)
+daemon.js: (Line number: 107)
+
+
+
+With some APIs, when you passed values to their params, you could pass a value that was not an exact match. For example, with ns.singularity.commitCrime, you could pass "Rob Store", "rob store", "RobStore", "robstore", "robStore", etc. This is called "fuzzy matching". Now, you must pass an exact value (i.e., Rob Store). This change affects:
+- Bladeburner action and type: BladeburnerActionType, BladeburnerGeneralActionName, BladeburnerContractName, BladeburnerOperationName, BladeburnerBlackOpName, SpecialBladeburnerActionTypeForSleeve, BladeburnerActionTypeForSleeve.
+- Crime: CrimeType
+- Faction work: FactionWorkType
+- University class: UniversityClassType
+- Gym stat: GymType
+- Job field: JobField
+- Stock position: PositionType
+- Stock order: OrderType
+You can access these values via ns.enums and Bladeburner APIs.
+
+
+
+ns.nuke, ns.brutessh, ns.ftpcrack, ns.relaysmtp, ns.httpworm, and ns.sqlinject now do not throw an error when you do not have the required .exe file or enough opened ports.
+This should not be a problem with most scripts. However, if you were catching errors and branching on the result of success/failure, you will need to use the return value instead.
+
+Usage of the following functions may have been affected:
+ns.nuke
+ns.brutessh
+ns.ftpcrack
+ns.relaysmtp
+ns.httpworm
+ns.sqlinject
+
+Potentially affected files on server home (with line numbers):
+helpers/open-ports.js: (Line numbers: 6, 11, 16, 21, 26)
+helpers/open-all-ports.js: (Line number: 15)
+hack3-helpers/tools/autonuke.js: (Line numbers: 8, 8, 8, 8, 8, 17)
+helpers/hack3/tools/autonuke.js: (Line numbers: 8, 8, 8, 8, 8, 17)
+
+
+
+ns.stock.getConstants().WSEAccountCost was removed.
+It has been automatically replaced with "ns.stock.getConstants().WseAccountCost".
+
+ns.stock.getConstants().TIXAPICost was removed.
+It has been automatically replaced with "ns.stock.getConstants().TixApiCost".
+
+ns.stock.hasWSEAccount() was removed.
+It has been automatically replaced with "ns.stock.hasWseAccount()".
+
+ns.stock.hasTIXAPIAccess() was removed.
+It has been automatically replaced with "ns.stock.hasTixApiAccess()".
+
+ns.stock.has4SDataTIXAPI() was removed.
+It has been automatically replaced with "ns.stock.has4SDataTixApi()".
+
+Usage of the following functions may have been affected:
+ns.stock.getConstants().WSEAccountCost
+ns.stock.getConstants().TIXAPICost
+ns.stock.hasWSEAccount
+ns.stock.hasTIXAPIAccess
+ns.stock.has4SDataTIXAPI
+
+Potentially affected files on server home (with line numbers):
+stockmaster.js: (Line numbers: 106, 221)
+Temp/hasTIX.txt.js: (Line number: 2)
+Temp/stock-hasTIXAPIAccess.txt.js: (Line numbers: 2, 4)
+Temp/stock-hasWSEAccount.txt.js: (Line numbers: 2, 4)
+Temp/stock-has4SDataTIXAPI.txt.js: (Line numbers: 2, 4)
+kill-stocks.js: (Line number: 2)
+helpers/stockmaster/stock-api.js: (Line numbers: 53, 55)
+helpers/stockmaster/trading.js: (Line number: 196)
+customHUD.js: (Line numbers: 479, 527)
+Temp/ns-stock-has4SDataTIXAPI.txt.js: (Line numbers: 2, 4)
+helpers/gangs/helpers.js: (Line numbers: 190, 191, 192)
+
+
+
+ns.getBitNodeMultipliers().RepToDonateToFaction was removed.
+It has been automatically replaced with "ns.getBitNodeMultipliers().FavorToDonateToFaction".
+
+Usage of the following functions may have been affected:
+ns.getBitNodeMultipliers().RepToDonateToFaction
+
+Potentially affected files on server home (with line numbers):
+helpers/gangs/helpers.js: (Line number: 727)
+
+
+
+The "DreamSense" upgrade was removed. The cost of that upgrade was refunded.
+
+Usage of the following functions may have been affected:
+DreamSense
+
+Potentially affected files on server home (with line numbers):
+helpers/corpo/corporation-formulas.js: (Line number: 41)
+constants/corp.js: (Line numbers: 8, 32, 33)
+
+
+
+The "Spring Water" industry was removed. The cost of all Spring Water divisions was refunded.
+
+Usage of the following functions may have been affected:
+Spring Water
+
+Potentially affected files on server home (with line numbers):
+constants/corpo-names.js: (Line number: 2)
+constants/corp.js: (Line number: 91)
+
+
+
+Some APIs returned a default value when you passed the hostname of a non-hackable server (e.g., hacknet server) to them.
+These APIs now throw an error. The affected APIs are:
+- ns.hackAnalyzeThreads
+- ns.hackAnalyze
+- ns.hackAnalyzeSecurity
+- ns.hackAnalyzeChance
+- ns.growthAnalyze
+- ns.growthAnalyzeSecurity
+- ns.nuke
+- ns.brutessh
+- ns.ftpcrack
+- ns.relaysmtp
+- ns.httpworm
+- ns.sqlinject
+- ns.getServerMoneyAvailable
+- ns.getServerSecurityLevel
+- ns.getServerBaseSecurityLevel
+- ns.getServerMinSecurityLevel
+- ns.getServerRequiredHackingLevel
+- ns.getServerMaxMoney
+- ns.getServerGrowth
+- ns.getServerNumPortsRequired
+- ns.cloud.deleteServer
+- ns.getHackTime
+- ns.getGrowTime
+- ns.getWeakenTime
+
+
+Usage of the following functions may have been affected:
+ns.hackAnalyzeThreads
+ns.hackAnalyze
+ns.hackAnalyzeSecurity
+ns.hackAnalyzeChance
+ns.growthAnalyze
+ns.growthAnalyzeSecurity
+ns.nuke
+ns.brutessh
+ns.ftpcrack
+ns.relaysmtp
+ns.httpworm
+ns.sqlinject
+ns.getServerMoneyAvailable
+ns.getServerSecurityLevel
+ns.getServerBaseSecurityLevel
+ns.getServerMinSecurityLevel
+ns.getServerRequiredHackingLevel
+ns.getServerMaxMoney
+ns.getServerGrowth
+ns.getServerNumPortsRequired
+ns.deleteServer
+ns.getHackTime
+ns.getGrowTime
+ns.getWeakenTime
+
+Potentially affected files on server home (with line numbers):
+hack1.js: (Line number: 27)
+helpers/find-best-server.js: (Line numbers: 13, 15, 18, 18, 20)
+helpers/formulas.js: (Line numbers: 9, 20, 20, 32, 36, 47, 58, 69)
+helpers/target.js: (Line numbers: 5, 6, 6, 7, 7, 23, 23, 24, 24, 42, 43, 44, 58, 59, 59, 69, 70, 70, 123, 123, 126, 127, 133, 139, 143, 144, 203)
+helpers/open-ports.js: (Line numbers: 6, 11, 16, 21, 26)
+scan.js: (Line numbers: 21, 23, 28, 30, 32, 34, 34)
+helpers/open-all-ports.js: (Line number: 15)
+pserv-opt.js: (Line numbers: 53, 76, 101)
+hack0.js: (Line number: 30)
+hack2.js: (Line numbers: 42, 43, 44, 45, 46, 47, 48)
+hack2-helpers/find-best-config.js: (Line numbers: 8, 9, 13, 13, 18, 21, 24, 24)
+hack3.js: (Line numbers: 92, 98, 99, 243, 244, 245, 246, 280, 328, 377, 529, 530, 531, 532)
+hack3-helpers/formulas.js: (Line numbers: 6, 14, 14, 24, 28, 36, 44, 52)
+hack3-helpers/prepare/grow.js: (Line numbers: 4, 4, 5, 5, 6, 6, 11, 11)
+hack3-helpers/tools/autonuke.js: (Line numbers: 7, 8, 8, 8, 8, 8, 17)
+hack3-helpers/schedule.js: (Line numbers: 95, 96, 145, 146)
+helpers/hack1/hack1-script.js: (Line numbers: 6, 7, 11, 14)
+helpers/hack2/find-best-config.js: (Line numbers: 8, 9, 13, 13, 18, 21, 24, 24)
+helpers/hack3/formulas.js: (Line numbers: 6, 14, 14, 24, 28, 36, 44, 52)
+helpers/hack3/schedule.js: (Line numbers: 95, 96, 145, 146)
+helpers/hack3/prepare/grow.js: (Line numbers: 4, 4, 5, 5, 6, 6, 11, 11)
+helpers/hack3/tools/autonuke.js: (Line numbers: 7, 8, 8, 8, 8, 8, 17)
+setup-hashnet.js: (Line number: 41)
+helpers/hack-target-score.js: (Line numbers: 14, 32, 32, 51, 53)
+
+
+
+You have to purchase a WSE account before purchasing 4S Market Data UI access via ns.stock.purchase4SMarketData().
+Note that this change does not affect 4S Market Data TIX API access (ns.stock.purchase4SMarketDataTixApi()).
+
+Usage of the following functions may have been affected:
+purchase4SMarketData
+
+Potentially affected files on server home (with line numbers):
+Temp/stock-purchase4SMarketDataTixApi.txt.js: (Line numbers: 2, 4)
+Temp/stock-purchase4SMarketData.txt.js: (Line numbers: 2, 4)
+helpers/stockmaster/trading.js: (Line numbers: 214, 224)
+
+
+
+The cloud server (purchased server) functions have been moved to their own interface, ns.cloud.
+"ns.getPurchasedServerCost()" was removed.
+It has been automatically replaced with "ns.cloud.getServerCost()"
+
+"ns.purchaseServer()" was removed.
+It has been automatically replaced with "ns.cloud.purchaseServer()"
+
+"ns.getPurchasedServerUpgradeCost()" was removed.
+It has been automatically replaced with "ns.cloud.getServerUpgradeCost()"
+
+"ns.upgradePurchasedServer()" was removed.
+It has been automatically replaced with "ns.cloud.upgradeServer()"
+
+"ns.renamePurchasedServer()" was removed.
+It has been automatically replaced with "ns.cloud.renameServer()"
+
+"ns.deleteServer()" was removed.
+It has been automatically replaced with "ns.cloud.deleteServer()"
+
+"ns.getPurchasedServers()" was removed.
+It has been automatically replaced with "ns.cloud.getServerNames()"
+
+"ns.getPurchasedServerLimit()" was removed.
+It has been automatically replaced with "ns.cloud.getServerLimit()"
+
+"ns.getPurchasedServerMaxRam()" was removed.
+It has been automatically replaced with "ns.cloud.getRamLimit()"
+
+Usage of the following functions may have been affected:
+ns.getPurchasedServerCost
+ns.purchaseServer
+ns.getPurchasedServerUpgradeCost
+ns.upgradePurchasedServer
+ns.renamePurchasedServer
+ns.deleteServer
+ns.getPurchasedServers
+ns.getPurchasedServerLimit
+ns.getPurchasedServerMaxRam
+
+Potentially affected files on server home (with line numbers):
+test.js: (Line numbers: 15, 18, 29)
+pserv-opt.js: (Line numbers: 15, 21, 39, 42, 43, 53, 54, 64, 76, 77, 101, 104, 105, 114)
+hack3.js: (Line numbers: 52, 96, 557)
+startup.js: (Line number: 25)
+helpers/hack1/restart-pservs.js: (Line number: 8)
+libs/NetscriptExtension.js: (Line numbers: 159, 203, 204)
+helpers/hack-target-score.js: (Line number: 46)
+server-table.js: (Line number: 59)
+
+
+
+ns.getBitNodeMultipliers() Purchased Server properties have been renamed to CloudServers with the creation of the cloud API.
+"ns.getBitNodeMultipliers().PurchasedServerCost" was removed.
+It has been automatically replaced with "ns.getBitNodeMultipliers().CloudServerCost".
+
+"ns.getBitNodeMultipliers().PurchasedServerSoftcap" was removed.
+It has been automatically replaced with "ns.getBitNodeMultipliers().CloudServerSoftcap".
+
+"ns.getBitNodeMultipliers().PurchasedServerLimit" was removed.
+It has been automatically replaced with "ns.getBitNodeMultipliers().CloudServerLimit".
+
+"ns.getBitNodeMultipliers().PurchasedServerMaxRam" was removed.
+It has been automatically replaced with "ns.getBitNodeMultipliers().CloudServerMaxRam".
+
+Usage of the following functions may have been affected:
+ns.getBitNodeMultipliers().PurchasedServerCost
+ns.getBitNodeMultipliers().PurchasedServerSoftcap
+ns.getBitNodeMultipliers().PurchasedServerLimit
+ns.getBitNodeMultipliers().PurchasedServerMaxRam
+
+Potentially affected files on server home (with line numbers):
+helpers/gangs/helpers.js: (Line numbers: 193, 200, 201, 728, 729, 730, 731)
+
+
+
+We added a new feature called Dark Net. The "darkweb" server is a darknet server now.
+Some APIs that require the target host to be a normal server do not work with darkweb. This should not be a
+problem with most scripts. The most potentially affected API is "ns.scan()". Darkweb does not appear in the
+result of this API anymore. If you want to find darknet servers, you need to use "ns.dnet.probe()".
+
+
+
+Accessing the hacknet namespace incurred a one-time cost of 4 GB of RAM, and each hacknet API did not incur
+RAM cost. Now the hacknet namespace does not incur RAM cost, but each hacknet API incurs a 0.5GB RAM cost.
+
+Usage of the following functions may have been affected:
+ns.hacknet.numNodes
+ns.hacknet.purchaseNode
+ns.hacknet.getPurchaseNodeCost
+ns.hacknet.getNodeStats
+ns.hacknet.upgradeLevel
+ns.hacknet.upgradeRam
+ns.hacknet.upgradeCore
+ns.hacknet.upgradeCache
+ns.hacknet.getLevelUpgradeCost
+ns.hacknet.getRamUpgradeCost
+ns.hacknet.getCoreUpgradeCost
+ns.hacknet.getCacheUpgradeCost
+ns.hacknet.numHashes
+ns.hacknet.hashCost
+ns.hacknet.spendHashes
+ns.hacknet.maxNumNodes
+ns.hacknet.hashCapacity
+ns.hacknet.getHashUpgrades
+ns.hacknet.getHashUpgradeLevel
+ns.hacknet.getStudyMult
+ns.hacknet.getTrainingMult
+
+Potentially affected files on server home (with line numbers):
+augmentations/unlock.js: (Line numbers: 199, 204, 612, 613, 617, 618, 622, 623, 630, 632)
+temp/proc-A1omR.js: (Line number: 3)
+temp/proc-IT-ze.js: (Line number: 3)
+temp/proc-gYlPy.js: (Line number: 3)
+temp/proc-dkHYWb.js: (Line number: 3)
+temp/proc-plVV.js: (Line number: 3)
+temp/proc-GysGxb.js: (Line number: 3)
+temp/proc-Gvbc6b.js: (Line number: 3)
+temp/proc-DRG4Mb.js: (Line number: 3)
+setup-hashnet.js: (Line numbers: 146, 147, 152, 178, 178, 179, 182, 188, 194, 196, 198, 203, 205, 210, 212, 217, 219, 224, 226, 231, 233, 238, 240, 244, 246, 250, 252, 257, 258, 259, 267, 268, 269, 272, 273, 276, 277, 280, 281, 283, 287, 288, 288, 290, 295, 297)
+temp/proc-_dB87b.js: (Line number: 3)
+
+
+
+ns.cloud.purchaseServer() and ns.cloud.deleteServer() previously removed whitespace from the provided hostname inconsistently.
+They now use the hostname as provided.
+
+Usage of the following functions may have been affected:
+ns.cloud.purchaseServer
+ns.cloud.deleteServer
+
+Potentially affected files on server home (with line numbers):
+test.js: (Line number: 29)
+pserv-opt.js: (Line numbers: 53, 54, 64, 76, 77, 101, 105, 114)
+
+
+
+If you pass a string to ns.codingcontract.attempt() for contracts that require a non-string answer, the
+game will convert that string to the expected format. This string conversion was inconsistent and had many
+undocumented behaviors. Now the rules are consistent and well-documented. Please check the "Coding Contracts"
+page for more information.
+There are 7 contracts that are affected by this change:
+- Find All Valid Math Expressions
+- Generate IP Addresses
+- Largest Rectangle in a Matrix
+- Merge Overlapping Intervals
+- Proper 2-Coloring of a Graph
+- Sanitize Parentheses in Expression
+- Spiralize Matrix
+Note that this change only affects the string conversion. The solution format of these contracts is an array,
+so if you pass the solution, which is an array, as is, you will not have any problems.
+If your code converts the array to a string, you should check these contracts, especially the "Sanitize
+Parentheses in Expression" contract and others that require a string array.
+- Sanitize Parentheses in Expression: Previously, if you passed an empty string to this contract, it was
+converted to an array containing an empty string. Now, it's converted to an empty array.
+- Read the "General rules", "String conversion", and "Tips" sections on the "Coding Contracts" page carefully.
+
+Usage of the following functions may have been affected:
+ns.codingcontract.attempt
+FindAllValidMathExpressions
+GenerateIPAddresses
+LargestRectangleInAMatrix
+MergeOverlappingIntervals
+Proper2ColoringOfAGraph
+SanitizeParenthesesInExpression
+SpiralizeMatrix
+Find All Valid Math Expressions
+Generate IP Addresses
+Largest Rectangle in a Matrix
+Merge Overlapping Intervals
+Proper 2-Coloring of a Graph
+Sanitize Parentheses in Expression
+Spiralize Matrix
+
+Potentially affected files on server home (with line numbers):
+helpers/solve-contract.js: (Line numbers: 287, 296, 299, 326, 329, 338, 366)
+
+
+
+ns.gang.getOtherGangInformation() was renamed to ns.gang.getAllGangInformation().
+The function was renamed because it returns information about all gangs, including the player's own gang.
+
+Usage of the following functions may have been affected:
+ns.gang.getOtherGangInformation
+
+Potentially affected files on server home (with line numbers):
+gangs.js: (Line numbers: 206, 666)
+Temp/ns-gang-getOtherGangInformation.txt.js: (Line numbers: 2, 4)
+
+
+
+Task objects returned from ns.singularity.getCurrentWork() and ns.sleeve.getTask() previously had an optional
+promise property named either "completion" or "nextCompletion", depending on the task.
+Now, these task objects always include this property, and it is consistently named "nextCompletion".
+
+Usage of the following functions may have been affected:
+ns.singularity.getCurrentWork
+ns.sleeve.getTask
+
+Potentially affected files on server home (with line numbers):
+helpers/stockmaster-helpers.js: (Line number: 601)
+augmentations/unlock.js: (Line number: 144)
+helpers/stockmaster/un-escape-array-args.js: (Line number: 1)
+helpers/gangs/helpers.js: (Line numbers: 488, 1005)
+temp/proc-ujKJ9b.js: (Line number: 3)

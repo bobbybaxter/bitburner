@@ -6,7 +6,7 @@ Usage:
 run /augmentations/unlock.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ] [ --begin ] [ --cheap ]
 */
 
-import type { FactionName, FactionWorkType, NS, Player, PlayerRequirement, Server } from '@ns';
+import { FactionName, FactionWorkType, NS, Player, PlayerRequirement, Server } from '@ns';
 import { canPurchaseFrom } from 'augmentations/buy.js';
 import { type AugmentationInfo, averageValue, DOMAINS, getAllAugmentations } from 'augmentations/info.js';
 import { Do } from 'helpers/do.js';
@@ -201,8 +201,16 @@ export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = 
         );
         return;
       }
-      for (const workType of getWorkTypes(ns.getPlayer())) {
-        if (faction && (await Do(ns, 'ns.singularity.workForFaction', faction.name, workType, false))) {
+      if (!faction) {
+        continue;
+      }
+      const availableWorkTypes = (await Do(
+        ns,
+        'ns.singularity.getFactionWorkTypes',
+        faction.name,
+      )) as FactionWorkType[];
+      for (const workType of getWorkTypes(ns.getPlayer(), availableWorkTypes)) {
+        if (await Do(ns, 'ns.singularity.workForFaction', faction.name, workType, false)) {
           ns.print(`Started working for ${faction.name} as ${workType}.`);
           break;
         }
@@ -1260,12 +1268,22 @@ export async function findBestFactionToWorkFor(
   return { workableFaction, joinableFaction };
 }
 
-export function getWorkTypes(player: Player): string[] {
-  if (player.skills.hacking > player.skills.strength) {
-    return ['hacking contracts', 'field work', 'security'];
-  } else {
-    return ['field work', 'security', 'hacking contracts'];
-  }
+export function getWorkTypes(player: Player, availableWorkTypes: FactionWorkType[]): FactionWorkType[] {
+  const rank = (workType: FactionWorkType): number => {
+    const lower = workType.toLowerCase();
+    if (player.skills.hacking > player.skills.strength) {
+      if (lower.includes('hack')) return 0;
+      if (lower.includes('field')) return 1;
+      if (lower.includes('security')) return 2;
+      return 3;
+    }
+    if (lower.includes('field')) return 0;
+    if (lower.includes('security')) return 1;
+    if (lower.includes('hack')) return 2;
+    return 3;
+  };
+
+  return [...availableWorkTypes].sort((a, b) => rank(a) - rank(b));
 }
 
 /**

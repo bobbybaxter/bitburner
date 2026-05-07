@@ -551,7 +551,7 @@ function arrayJumpingGame2(ns: NS, data: number[]): number {
   return jumps;
 }
 
-function mergeOverlappingIntervals(ns: NS, data: number[][]): string {
+function mergeOverlappingIntervals(ns: NS, data: number[][]): number[][] {
   const intervals = data.slice();
   intervals.sort((a, b) => {
     return a[0] - b[0];
@@ -571,9 +571,7 @@ function mergeOverlappingIntervals(ns: NS, data: number[][]): string {
   }
   result.push([start, end]);
 
-  const sanitizedResult = convert2DArrayToString(result);
-
-  return sanitizedResult;
+  return result;
 }
 
 function generateIpAddresses(ns: NS, data: string): string[] {

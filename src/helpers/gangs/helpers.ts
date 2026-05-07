@@ -928,7 +928,6 @@ export async function tryGetBitNodeMultipliers_Custom(ns: NS, fnGetNsDataThrough
         null,
         /*silent:*/ true,
       )) as BitNodeMultipliers & Record<string, number>;
-      mults.FavorToDonateToFaction ??= mults.RepToDonateToFaction;
       mults.CloudServerCost ??= mults.PurchasedServerCost;
       mults.CloudServerSoftcap ??= mults.PurchasedServerSoftcap;
       mults.CloudServerLimit ??= mults.PurchasedServerLimit;

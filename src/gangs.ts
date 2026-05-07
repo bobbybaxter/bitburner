@@ -17,7 +17,7 @@ type GangGenInfo = ReturnType<NS['gang']['getGangInformation']>;
 type GangMemberInfo = ReturnType<NS['gang']['getMemberInformation']>;
 type GangTaskStats = ReturnType<NS['gang']['getTaskStats']>;
 type EquipmentStats = ReturnType<NS['gang']['getEquipmentStats']>;
-type GangOtherInfoObject = ReturnType<NS['gang']['getOtherGangInformation']>[string];
+type GangOtherInfoObject = ReturnType<NS['gang']['getAllGangInformation']>[string];
 type GangMemberAscension = NonNullable<ReturnType<NS['gang']['getAscensionResult']>>;
 type ResetInfo = ReturnType<NS['getResetInfo']>;
 type Player = ReturnType<NS['getPlayer']>;
@@ -297,7 +297,7 @@ async function mainLoop(ns: NS) {
   const thisLoopStart = Date.now();
   if (!territoryTickDetected) {
     // Detect the first territory tick by watching for other gang's territory power to update.
-    const otherGangInfo = (await getNsDataThroughFile(ns, 'ns.gang.getOtherGangInformation()')) as Record<
+    const otherGangInfo = (await getNsDataThroughFile(ns, 'ns.gang.getAllGangInformation()')) as Record<
       string,
       GangOtherInfoObject
     >; // { [gangName]: { power, territory } }
@@ -868,7 +868,7 @@ async function waitForGameUpdate(ns: NS, oldGangInfo: GangGenInfo): Promise<Gang
 async function enableOrDisableWarfare(ns: NS, myGangInfo: GangGenInfo) {
   warfareFinished = Math.round(myGangInfo.territory * 2 ** 20) / 2 ** 20 /* Handle API imprecision */ >= 1;
   if (warfareFinished && !myGangInfo.territoryWarfareEngaged) return; // No need to engage once we hit 100%
-  const otherGangs = (await getNsDataThroughFile(ns, 'ns.gang.getOtherGangInformation()')) as Record<
+  const otherGangs = (await getNsDataThroughFile(ns, 'ns.gang.getAllGangInformation()')) as Record<
     string,
     GangOtherInfoObject
   >;

@@ -33,12 +33,12 @@ export async function doAction(ns: NS, aSuccessChance: number = 1) {
     requireSuccessChance?: boolean;
     requireCountRemaining?: boolean;
   }[] = [
-    { name: 'Assassination' as BladeburnerOperationName, type: 'Operation' as BladeburnerActionType },
-    { name: 'Undercover Operation' as BladeburnerOperationName, type: 'Operation' as BladeburnerActionType },
-    { name: 'Investigation' as BladeburnerOperationName, type: 'Operation' as BladeburnerActionType },
-    { name: 'Retirement' as BladeburnerContractName, type: 'Contract' as BladeburnerActionType },
-    { name: 'Bounty Hunter' as BladeburnerContractName, type: 'Contract' as BladeburnerActionType },
-    { name: 'Tracking' as BladeburnerContractName, type: 'Contract' as BladeburnerActionType },
+    { name: 'Assassination' as BladeburnerOperationName, type: 'Operations' as BladeburnerActionType },
+    { name: 'Undercover Operation' as BladeburnerOperationName, type: 'Operations' as BladeburnerActionType },
+    { name: 'Investigation' as BladeburnerOperationName, type: 'Operations' as BladeburnerActionType },
+    { name: 'Retirement' as BladeburnerContractName, type: 'Contracts' as BladeburnerActionType },
+    { name: 'Bounty Hunter' as BladeburnerContractName, type: 'Contracts' as BladeburnerActionType },
+    { name: 'Tracking' as BladeburnerContractName, type: 'Contracts' as BladeburnerActionType },
     {
       name: 'Field Analysis' as BladeburnerGeneralActionName,
       type: 'General' as BladeburnerActionType,

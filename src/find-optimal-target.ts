@@ -1,4 +1,4 @@
-import { NS } from '@ns';
+import { NS, Server } from '@ns';
 import { getServerNames } from '/helpers/get-server-names.js';
 
 /**
@@ -9,7 +9,7 @@ export async function main(ns: NS): Promise<void> {
   const currentTarget = ns.read('/constants/optimal-target.txt') || 'n00dles';
 
   const availableServers = getServerNames(ns)
-    .map((server) => ns.getServer(server.name))
+    .map((server) => ns.getServer(server.name) as Server)
     .filter((server) => server.hasAdminRights === true)
     .filter((server) => (server.requiredHackingSkill ?? 0) <= currentHackingLevel / 2)
     .sort((a, b) => ((a?.moneyMax ?? 0) > (b?.moneyMax ?? 0) ? -1 : 1));

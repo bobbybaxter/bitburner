@@ -5,6 +5,7 @@ import { Do } from '/helpers/do.js';
  * Starts all scripts on the home server
  * Requires 25.25 GB RAM
  */
+
 export async function main(ns: NS): Promise<void> {
   // disableNoisyLogs(ns);
   const hasCorporationDivision = async (divisionName: string): Promise<boolean> => {

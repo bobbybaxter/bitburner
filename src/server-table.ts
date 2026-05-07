@@ -1,4 +1,4 @@
-import type { NS } from '@ns';
+import type { NS, Server } from '@ns';
 import { art } from '/helpers/art.js';
 import { getServerNames } from '/helpers/get-server-names.js';
 
@@ -70,7 +70,7 @@ export async function main(ns: NS): Promise<void> {
     const purchased = new Set(ns.cloud.getServerNames());
     const rows = getServerNames(ns)
       .map(({ hostname }) => {
-        const server = ns.getServer(hostname);
+        const server = ns.getServer(hostname) as Server;
         if (!isNetworkTarget(hostname, purchased, server)) return null;
         const req = server.requiredHackingSkill ?? 0;
         const admin = server.hasAdminRights;

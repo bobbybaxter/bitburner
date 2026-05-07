@@ -1,3 +1,5 @@
+//
+
 import { NS } from '@ns';
 import { DAEMON_SCRIPT_NAME } from '/libs/constants';
 import { NetscriptExtension } from '/libs/NetscriptExtension';
@@ -20,6 +22,26 @@ let runCorpTest = false;
 
 const STOCK_HUD_ROW_ATTR = 'data-custom-hud-stock-row';
 const KARMA_HUD_ROW_ATTR = 'data-custom-hud-karma-row';
+
+type BitburnerSaveData = string | Uint8Array;
+type AllServersSnapshot = unknown;
+type BitburnerGlobal = typeof globalThis & {
+  AllServers: {
+    saveAllServers(): AllServersSnapshot;
+    loadAllServers(servers: AllServersSnapshot): void;
+  };
+  SaveObject: {
+    loadGame(saveData: BitburnerSaveData): void;
+    saveObject: {
+      getSaveData(
+        includeRunningScripts: boolean,
+        includeSaveTimestamp: boolean,
+      ): BitburnerSaveData | Promise<BitburnerSaveData>;
+    };
+  };
+};
+
+const bitburnerGlobal = globalThis as BitburnerGlobal;
 
 /** Clone a vanilla overview row (same pattern as stockmaster `helpers/stockmaster/hud.ts` `initializeHud`). */
 function cloneOverviewStatRow(doc: Document): { row: HTMLElement; labelEl: HTMLElement; valueEl: HTMLElement } {
@@ -381,17 +403,17 @@ function createTestingTool() {
         }
         testingTools.updateSaveData('save', saveData).then(() => {
           ns.killall('home');
-          const currentAllServers = globalThis.AllServers.saveAllServers();
-          globalThis.SaveObject.loadGame(saveData);
+          const currentAllServers = bitburnerGlobal.AllServers.saveAllServers();
+          bitburnerGlobal.SaveObject.loadGame(saveData);
           setTimeout(() => {
-            globalThis.AllServers.loadAllServers(currentAllServers);
+            bitburnerGlobal.AllServers.loadAllServers(currentAllServers);
             ns.exec('daemon.js', 'home', 1, '--maintainCorporation');
           }, 1000);
         });
       });
     });
     doc.getElementById('btn-export-save-data')!.addEventListener('click', async function () {
-      testingTools.insertSaveData(await globalThis.SaveObject.saveObject.getSaveData(true, true)).then(() => {
+      testingTools.insertSaveData(await bitburnerGlobal.SaveObject.saveObject.getSaveData(true, true)).then(() => {
         reloadSaveDataSelectElement().then();
       });
     });

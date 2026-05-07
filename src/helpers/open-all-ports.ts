@@ -21,10 +21,11 @@ export async function main(ns: NS): Promise<void> {
     const totalOpenPorts = (server.openPortCount ?? 0) + newlyOpened;
     if (totalOpenPorts < (server.numOpenPortsRequired ?? 0)) return;
 
-    try {
-      ns.nuke(serverName);
-    } catch (e) {
-      console.error(e);
+    ns.nuke(serverName);
+    if (!ns.hasRootAccess(serverName)) {
+      ns.print(
+        `Failed to nuke ${serverName} after opening ${totalOpenPorts}/${server.numOpenPortsRequired ?? 0} ports.`,
+      );
     }
   });
 }

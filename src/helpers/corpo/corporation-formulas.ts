@@ -44,7 +44,6 @@ export enum UnlockName {
 export const UpgradeName = {
   SMART_FACTORIES: 'Smart Factories',
   SMART_STORAGE: 'Smart Storage',
-  // DREAM_SENSE: 'DreamSense',
   WILSON_ANALYTICS: 'Wilson Analytics',
   NUOPTIMAL_NOOTROPIC_INJECTOR_IMPLANTS: 'Nuoptimal Nootropic Injector Implants',
   SPEECH_PROCESSOR_IMPLANTS: 'Speech Processor Implants',

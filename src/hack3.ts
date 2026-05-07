@@ -117,6 +117,7 @@ export async function main(ns: NS): Promise<void> {
 
       const hostServers = availableServers
         .map((server) => {
+          const serverData = ns.getServer(server.hostname) as Partial<Server>;
           const maxRam = ns.getServerMaxRam(server.hostname);
           const usedRam = ns.getServerUsedRam(server.hostname);
           let availableRam = Math.floor(maxRam - usedRam);
@@ -132,24 +133,26 @@ export async function main(ns: NS): Promise<void> {
           return {
             ...server,
             hostname: server.hostname,
+            requiredHackingSkill: serverData.requiredHackingSkill ?? 0,
+            moneyMax: serverData.moneyMax ?? 0,
+            purchasedByPlayer: serverData.purchasedByPlayer ?? false,
             availableRam,
             availableThreads,
           };
         })
-        .filter(
-          (server) =>
-            server.availableThreads > 0 && ns.getServerRequiredHackingLevel(server.hostname) <= ns.getHackingLevel(),
-        );
+        .filter((server) => server.availableThreads > 0 && server.requiredHackingSkill <= ns.getHackingLevel());
 
       const totalThreads = hostServers.reduce((acc, s) => acc + s.availableThreads, 0);
 
       const targetServers = availableServers
         .filter((server) => {
+          const serverData = ns.getServer(server.hostname) as Partial<Server>;
           const isCloudServer = ns.cloud.getServerNames().includes(server.hostname);
           const isHomeServer = server.hostname === 'home';
-          const holdsNoMoney = ns.getServerMaxMoney(server.hostname) === 0;
-          const ableToHack = ns.getServerRequiredHackingLevel(server.hostname) <= ns.getHackingLevel();
-          return ableToHack && !isCloudServer && !isHomeServer && !holdsNoMoney;
+          const holdsNoMoney = (serverData.moneyMax ?? 0) === 0;
+          const ableToHack = (serverData.requiredHackingSkill ?? 0) <= ns.getHackingLevel();
+          const isPurchased = serverData.purchasedByPlayer ?? false;
+          return ableToHack && !isCloudServer && !isHomeServer && !holdsNoMoney && !isPurchased;
         })
         .map((server) => {
           const optimalServer = getOptimalServer({ ns, targetServer: server.hostname });

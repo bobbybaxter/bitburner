@@ -12,5 +12,6 @@
   "definitionFile": {
     "update": true,
     "location": "NetscriptDefinitions.d.ts"
-  }
+  },
+  "pushAllOnConnection": true
 }

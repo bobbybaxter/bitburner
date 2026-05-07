@@ -6,7 +6,6 @@ export const WAREHOUSE_UPGRADE_BASE_PRICE = 1e9;
 export const CorpUpgradeName = {
   SMART_FACTORIES: 'Smart Factories',
   SMART_STORAGE: 'Smart Storage',
-  DREAM_SENSE: 'DreamSense',
   WILSON_ANALYTICS: 'Wilson Analytics',
   NUOPTIMAL_NOOTROPIC_INJECTOR_IMPLANTS: 'Nuoptimal Nootropic Injector Implants',
   SPEECH_PROCESSOR_IMPLANTS: 'Speech Processor Implants',
@@ -38,15 +37,6 @@ export const CorpUpgradesData: {
     priceMult: 1.06,
     benefit: 0.1,
     desc: 'Advanced AI automatically optimizes your warehouse storage methods. Each level of this upgrade increases your global warehouse storage size by 10% (additive).',
-  },
-  DreamSense: {
-    name: 'DreamSense',
-    basePrice: 2000000000,
-    priceMult: 1.06,
-    benefit: 0.001,
-    desc:
-      'Automated brand presence that slowly increases division awareness and popularity. ' +
-      'Each level adds a small amount to these stats each market cycle.',
   },
   'Wilson Analytics': {
     name: 'Wilson Analytics',
@@ -100,7 +90,6 @@ export const CorpUpgradesData: {
 };
 
 export const CORPO_NAME_MAP = {
-  'Spring Water': 'SpringH20',
   'Water Utilities': 'H20',
   Agriculture: 'Agri',
   Fishing: 'Fish',
