@@ -1,5 +1,5 @@
 import { CorpResearchesData } from '../../constants/corp';
-import { DivisionResearches, ResearchName } from './types';
+import type { DivisionResearches, ResearchName } from './types';
 
 export function getResearchMultiplier(
   divisionResearches: DivisionResearches,

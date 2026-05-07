@@ -364,4 +364,3 @@ export {
   windowEndpoint,
   wrap,
 };
-//# sourceMappingURL=comlink.js.map
