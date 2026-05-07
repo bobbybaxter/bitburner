@@ -571,13 +571,13 @@ export async function runCommand_Custom(
           true,
         );
         if (reqRam > homeMaxRam)
-          reason = ` as it requires ${formatRam(reqRam)} RAM, but home only has ${formatRam(homeMaxRam)}`;
+          reason = ` as it requires ${ns.format.ram(reqRam)} RAM, but home only has ${ns.format.ram(homeMaxRam)}`;
         else if (reqRam > homeMaxRam - homeUsedRam)
-          reason = ` as it requires ${formatRam(reqRam)} RAM, but home only has ${formatRam(homeMaxRam - homeUsedRam)} of ${formatRam(homeMaxRam)} free.`;
+          reason = ` as it requires ${ns.format.ram(reqRam)} RAM, but home only has ${ns.format.ram(homeMaxRam - homeUsedRam)} of ${ns.format.ram(homeMaxRam)} free.`;
         else
           reason =
-            `, but the reason is unclear. (Perhaps a syntax error?) This script requires ${formatRam(reqRam)} RAM, and ` +
-            `home has ${formatRam(homeMaxRam - homeUsedRam)} of ${formatRam(homeMaxRam)} free, which appears to be sufficient. ` +
+            `, but the reason is unclear. (Perhaps a syntax error?) This script requires ${ns.format.ram(reqRam)} RAM, and ` +
+            `home has ${ns.format.ram(homeMaxRam - homeUsedRam)} of ${ns.format.ram(homeMaxRam)} free, which appears to be sufficient. ` +
             `If you wish to troubleshoot, you can try manually running the script with the arguments listed below:`;
       } catch (e) {
         console.error(e);
@@ -927,10 +927,7 @@ export async function tryGetBitNodeMultipliers_Custom(ns: NS, fnGetNsDataThrough
         null,
         null,
         /*silent:*/ true,
-      )) as BitNodeMultipliers & Record<string, number | undefined>;
-      // TODO: Remove after v3.0.0 is released on stable.
-      // If running an older version of the game, some property names need to be updated.
-      mults.FavorToDonateToFaction ??= mults.RepToDonateToFaction;
+      )) as BitNodeMultipliers & Record<string, number>;
       mults.CloudServerCost ??= mults.PurchasedServerCost;
       mults.CloudServerSoftcap ??= mults.PurchasedServerSoftcap;
       mults.CloudServerLimit ??= mults.PurchasedServerLimit;
@@ -1324,5 +1321,5 @@ export function formatTime(ns: NS, milliseconds: number, milliPrecision?: boolea
   if (isV3(ns)) {
     return (ns.ui as UserInterfaceWithTime).time(milliseconds, milliPrecision);
   }
-  return ns.tFormat(milliseconds, milliPrecision);
+  return ns.format.time(milliseconds, milliPrecision);
 }

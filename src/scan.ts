@@ -1,4 +1,4 @@
-import { NS } from '@ns';
+import { NS, Server } from '@ns';
 import { getServerNames } from '/helpers/get-server-names.js';
 
 const facServers: Record<string, string> = {
@@ -18,25 +18,29 @@ export async function main(ns: NS): Promise<void> {
 
   getServerNames(ns).forEach((server) => {
     const name = server.name;
+    const serverData = ns.getServer(name) as Partial<Server>;
+    const moneyAvailable = Math.round(serverData.moneyAvailable ?? 0);
+    const moneyMax = Math.round(serverData.moneyMax ?? 0);
+    const moneyPct = moneyMax > 0 ? Math.round((100 * moneyAvailable) / moneyMax) : 0;
     const hackColor = ns.hasRootAccess(name) ? 'lime' : 'red';
     const nameColor = facServers[name] ?? 'white';
 
     const hoverText = [
       'Req Level: ',
-      ns.getServerRequiredHackingLevel(name),
+      serverData.requiredHackingSkill ?? 0,
       '&#10;Req Ports: ',
-      ns.getServerNumPortsRequired(name),
+      serverData.numOpenPortsRequired ?? 0,
       '&#10;Memory: ',
-      ns.getServerMaxRam(name),
+      serverData.maxRam ?? 0,
       'GB',
       '&#10;Security: ',
-      ns.getServerSecurityLevel(name),
+      serverData.hackDifficulty ?? 0,
       '/',
-      ns.getServerMinSecurityLevel(name),
+      serverData.minDifficulty ?? 0,
       '&#10;Money: ',
-      Math.round(ns.getServerMoneyAvailable(name)).toLocaleString(),
+      moneyAvailable.toLocaleString(),
       ' (',
-      Math.round((100 * ns.getServerMoneyAvailable(name)) / ns.getServerMaxMoney(name)),
+      moneyPct,
       '%)',
     ].join('');
 

@@ -15,7 +15,7 @@ const SECTOR12 = 'Sector-12';
 const VOLHAVEN = 'Volhaven';
 
 /** All gym workout types at Powerhouse, in a fixed order. */
-const GYM_STATS = ['str', 'def', 'dex', 'agi'] as const;
+const GYM_STATS = ['strength', 'defense', 'dexterity', 'agility'] as const;
 
 /** Best hacking and charisma classes at ZB Institute of Technology (Volhaven). */
 const ZB_HACK = 'Algorithms';

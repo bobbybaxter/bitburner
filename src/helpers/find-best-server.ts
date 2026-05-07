@@ -1,4 +1,4 @@
-import { NS } from '@ns';
+import { NS, Server } from '@ns';
 import { getServerNames } from './get-server-names';
 import target from './target';
 
@@ -24,12 +24,11 @@ export function findBestServer(ns: NS): ServerWithScore[] {
   );
 
   const servers = getServerNames(ns)
-    .filter(
-      (server) =>
-        server.name !== 'home' &&
-        ns.hasRootAccess(server.name) &&
-        ns.getServerRequiredHackingLevel(server.name) <= ns.getHackingLevel(),
-    )
+    .filter((server) => {
+      if (server.name === 'home' || !ns.hasRootAccess(server.name)) return false;
+      const data = ns.getServer(server.name) as Server;
+      return (data.requiredHackingSkill ?? 0) <= ns.getHackingLevel() && (data.moneyMax ?? 0) > 0;
+    })
     .map((server): ServerWithScore | null => {
       const maxCash = ns.getServerMaxMoney(server.name);
       if (!maxCash) return null;

@@ -72,7 +72,7 @@ export function findBestConfig({
     return null;
   } else {
     // console.info(
-    //   `Optimal setup for ${target}: Steal $${ns.formatNumber(bestConfig.moneyStolen)}, ` +
+    //   `Optimal setup for ${target}: Steal $${ns.format.number(bestConfig.moneyStolen)}, ` +
     //     `Hack Threads = ${bestConfig.hackThreads}, ` +
     //     `First Weaken Threads = ${bestConfig.firstWeakenThreads}, ` +
     //     `Grow Threads = ${bestConfig.growThreads}, ` +

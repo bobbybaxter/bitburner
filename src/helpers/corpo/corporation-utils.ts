@@ -287,7 +287,7 @@ export async function buyUnlock(ns: NS, unlockName: CorpUnlockName): Promise<voi
     cyclesWaited += 10;
     if (cyclesWaited % 50 === 0) {
       ns.print(
-        `Waiting to buy ${unlockName}: ${ns.formatNumber(funds)} / ${ns.formatNumber(unlockCost)} ` +
+        `Waiting to buy ${unlockName}: ${ns.format.number(funds)} / ${ns.format.number(unlockCost)} ` +
           `(${cyclesWaited} cycles)`,
       );
     }
@@ -534,7 +534,7 @@ export async function assignJobs(ns: NS, divisionName: string, officeSetups: Off
         if (jobName === EmployeePosition.UNASSIGNED) {
           continue;
         }
-        await Do(ns, 'ns.corporation.setAutoJobAssignment', divisionName, officeSetup.city, jobName, 0);
+        await Do(ns, 'ns.corporation.setJobAssignment', divisionName, officeSetup.city, jobName, 0);
       }
 
       const office = (await Do(ns, 'ns.corporation.getOffice', divisionName, officeSetup.city)) as ReturnType<
@@ -569,7 +569,7 @@ export async function assignJobs(ns: NS, divisionName: string, officeSetups: Off
         if (
           !((await Do(
             ns,
-            'ns.corporation.setAutoJobAssignment',
+            'ns.corporation.setJobAssignment',
             divisionName,
             officeSetup.city,
             jobName,
@@ -639,7 +639,7 @@ export async function clearPurchaseOrders(ns: NS, clearInputMaterialOrders: bool
       const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
         NS['corporation']['getDivision']
       >;
-      const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+      const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
       for (const materialName of getRecordKeys(
         industrialData.requiredMaterials as PartialRecord<CorpMaterialName, string>,
       )) {
@@ -746,7 +746,6 @@ export async function getCorporationUpgradeLevels(ns: NS): Promise<CorporationUp
   const corporationUpgradeLevels: CorporationUpgradeLevels = {
     [UpgradeName.SMART_FACTORIES]: 0,
     [UpgradeName.SMART_STORAGE]: 0,
-    [UpgradeName.DREAM_SENSE]: 0,
     [UpgradeName.WILSON_ANALYTICS]: 0,
     [UpgradeName.NUOPTIMAL_NOOTROPIC_INJECTOR_IMPLANTS]: 0,
     [UpgradeName.SPEECH_PROCESSOR_IMPLANTS]: 0,
@@ -799,7 +798,7 @@ export async function getIndustryData(ns: NS, divisionName: string): Promise<Cor
   const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
     NS['corporation']['getDivision']
   >;
-  return (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+  return (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
 }
 
 export async function createDivision(
@@ -841,7 +840,7 @@ export async function createDivision(
       cyclesWaited += 10;
       if (cyclesWaited % 50 === 0) {
         ns.print(
-          `Waiting to create ${divisionName}: ${ns.formatNumber(funds)} / ${ns.formatNumber(expandIndustryCost)} ` +
+          `Waiting to create ${divisionName}: ${ns.format.number(funds)} / ${ns.format.number(expandIndustryCost)} ` +
             `(${cyclesWaited} cycles)`,
         );
       }
@@ -1039,7 +1038,7 @@ export async function setSmartSupplyData(ns: NS): Promise<void> {
     if (!(await Do(ns, 'ns.corporation.hasWarehouse', division.name, city))) {
       return;
     }
-    const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+    const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
     const warehouse = (await Do(ns, 'ns.corporation.getWarehouse', division.name, city)) as ReturnType<
       NS['corporation']['getWarehouse']
     >;
@@ -1159,7 +1158,7 @@ export async function buyOptimalAmountOfInputMaterials(
     if (!(await Do(ns, 'ns.corporation.hasWarehouse', division.name, city))) {
       return;
     }
-    const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+    const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
     const office = (await Do(ns, 'ns.corporation.getOffice', division.name, city)) as ReturnType<
       NS['corporation']['getOffice']
     >;
@@ -1438,8 +1437,8 @@ export async function developNewProduct(
   ).funds;
   if (productDevelopmentBudget > currentFunds) {
     ns.print(
-      `Skip developing new product: budget ${ns.formatNumber(productDevelopmentBudget)} ` +
-        `> available funds ${ns.formatNumber(currentFunds)}.`,
+      `Skip developing new product: budget ${ns.format.number(productDevelopmentBudget)} ` +
+        `> available funds ${ns.format.number(currentFunds)}.`,
     );
     return null;
   }
@@ -1494,8 +1493,8 @@ export async function developNewProduct(
     const minRequiredBudget = bestKnownBudget * 1.0102;
     if (productDevelopmentBudget < minRequiredBudget) {
       ns.print(
-        `Skip developing new product: budget ${ns.formatNumber(productDevelopmentBudget)} ` +
-          `< required ${ns.formatNumber(minRequiredBudget)} (1.02% above best budget ${ns.formatNumber(bestKnownBudget)}).`,
+        `Skip developing new product: budget ${ns.format.number(productDevelopmentBudget)} ` +
+          `< required ${ns.format.number(minRequiredBudget)} (1.02% above best budget ${ns.format.number(bestKnownBudget)}).`,
       );
       return null;
     }
@@ -1907,7 +1906,7 @@ export async function getOptimalSellingPrice(
     getUpgradeBenefit(UpgradeName.ABC_SALES_BOTS, salesBotLevel) *
     getResearchSalesMultiplier(await getDivisionResearches(ns, division.name));
   const optimalPrice = markupLimit / Math.sqrt(expectedSalesVolume / salesMultipliers) + marketPrice;
-  // ns.print(`item: ${item.name}, optimalPrice: ${ns.formatNumber(optimalPrice)}`);
+  // ns.print(`item: ${item.name}, optimalPrice: ${ns.format.number(optimalPrice)}`);
 
   return optimalPrice.toString();
 }
@@ -1929,7 +1928,7 @@ export async function setOptimalSellingPriceForEverything(ns: NS): Promise<void>
     const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
       NS['corporation']['getDivision']
     >;
-    const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+    const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
     const products = division.products;
     const hasMarketTA2 = (await Do(
       ns,
@@ -1996,10 +1995,10 @@ export async function buyBoostMaterials(ns: NS, division: Division): Promise<voi
   const funds = ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>)
     .funds;
   if (funds < 10e9) {
-    ns.print(`WARN: Skipping boost materials purchase — funds too low (${ns.formatNumber(funds)})`);
+    ns.print(`WARN: Skipping boost materials purchase — funds too low (${ns.format.number(funds)})`);
     return;
   }
-  const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+  const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
   let reservedSpaceRatio = 0.2;
   const ratio = 0.1;
   if (industryData.makesProducts) {
@@ -2025,9 +2024,9 @@ export async function buyBoostMaterials(ns: NS, division: Division): Promise<voi
       }
       let effectiveRatio = ratio;
       if (
-        (availableSpace / warehouse.size < 0.5 && division.type === IndustryType.AGRICULTURE) ||
+        (availableSpace / warehouse.size < 0.5 && division.industry === IndustryType.AGRICULTURE) ||
         (availableSpace / warehouse.size < 0.75 &&
-          (division.type === IndustryType.CHEMICAL || division.type === IndustryType.TOBACCO))
+          (division.industry === IndustryType.CHEMICAL || division.industry === IndustryType.TOBACCO))
       ) {
         effectiveRatio = 0.2;
       }
@@ -2110,8 +2109,8 @@ export async function createDummyDivisions(ns: NS, numberOfDivisions: number): P
       cyclesWaited += 10;
       if (cyclesWaited % 50 === 0) {
         ns.print(
-          `Waiting to create ${dummyDivisionName}: ${ns.formatNumber(funds)} / ` +
-            `${ns.formatNumber(restaurantIndustryData.startingCost)} (${cyclesWaited} cycles)`,
+          `Waiting to create ${dummyDivisionName}: ${ns.format.number(funds)} / ` +
+            `${ns.format.number(restaurantIndustryData.startingCost)} (${cyclesWaited} cycles)`,
         );
       }
       await waitForNumberOfCycles(ns, 10);
@@ -2142,14 +2141,14 @@ export async function waitForOffer(
   let offer = (
     (await Do(ns, 'ns.corporation.getInvestmentOffer')) as ReturnType<NS['corporation']['getInvestmentOffer']>
   ).funds;
-  ns.print(`Initial offer: ${ns.formatNumber(offer)}`);
+  ns.print(`Initial offer: ${ns.format.number(offer)}`);
   for (let i = 0; i < maxAdditionalCycles; i++) {
     await waitForNumberOfCycles(ns, 1);
     const inv = (await Do(ns, 'ns.corporation.getInvestmentOffer')) as ReturnType<
       NS['corporation']['getInvestmentOffer']
     >;
-    ns.print(`Offer check ${i + 1}/${maxAdditionalCycles}: ${ns.formatNumber(inv.funds)}`);
-    console.log(`Offer: ${ns.formatNumber(inv.funds)}`);
+    ns.print(`Offer check ${i + 1}/${maxAdditionalCycles}: ${ns.format.number(inv.funds)}`);
+    console.log(`Offer: ${ns.format.number(inv.funds)}`);
     if (inv.funds < offer * 1.001) {
       ns.print('Offer stabilized.');
       break;
@@ -2164,11 +2163,11 @@ export async function waitForOffer(
   let prevOffer = invFinal.funds;
   while (invFinal.funds < expectedOffer && extraCycles < maxExtraWaitCycles) {
     ns.print(
-      `Offer ${ns.formatNumber(invFinal.funds)} < target ${ns.formatNumber(expectedOffer)}, ` +
+      `Offer ${ns.format.number(invFinal.funds)} < target ${ns.format.number(expectedOffer)}, ` +
         `waiting... (${extraCycles}/${maxExtraWaitCycles} extra cycles)`,
     );
     console.log(
-      `Offer ${ns.formatNumber(invFinal.funds)} is below expected ${ns.formatNumber(expectedOffer)}, ` +
+      `Offer ${ns.format.number(invFinal.funds)} is below expected ${ns.format.number(expectedOffer)}, ` +
         `waiting... (${extraCycles}/${maxExtraWaitCycles})`,
     );
     await waitForNumberOfCycles(ns, 5);
@@ -2178,10 +2177,10 @@ export async function waitForOffer(
     >;
     if (invFinal.funds < expectedOffer * 0.5 && invFinal.funds < prevOffer * 1.01) {
       ns.print(
-        `Offer plateaued at ${ns.formatNumber(invFinal.funds)}, far below target ${ns.formatNumber(expectedOffer)}. Accepting early.`,
+        `Offer plateaued at ${ns.format.number(invFinal.funds)}, far below target ${ns.format.number(expectedOffer)}. Accepting early.`,
       );
       console.warn(
-        `Offer plateaued at ${ns.formatNumber(invFinal.funds)}, far below target ${ns.formatNumber(expectedOffer)}. Accepting early.`,
+        `Offer plateaued at ${ns.format.number(invFinal.funds)}, far below target ${ns.format.number(expectedOffer)}. Accepting early.`,
       );
       break;
     }
@@ -2189,12 +2188,12 @@ export async function waitForOffer(
   }
   if (invFinal.funds < expectedOffer) {
     ns.print(
-      `WARNING: Accepting offer ${ns.formatNumber(invFinal.funds)} below target ${ns.formatNumber(expectedOffer)}`,
+      `WARNING: Accepting offer ${ns.format.number(invFinal.funds)} below target ${ns.format.number(expectedOffer)}`,
     );
     console.warn(
-      `Accepting offer ${ns.formatNumber(invFinal.funds)} below expected ${ns.formatNumber(expectedOffer)} after ${extraCycles} extra cycles`,
+      `Accepting offer ${ns.format.number(invFinal.funds)} below expected ${ns.format.number(expectedOffer)} after ${extraCycles} extra cycles`,
     );
   } else {
-    ns.print(`Offer ready: ${ns.formatNumber(invFinal.funds)}`);
+    ns.print(`Offer ready: ${ns.format.number(invFinal.funds)}`);
   }
 }

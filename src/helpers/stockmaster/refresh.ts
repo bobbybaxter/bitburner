@@ -160,12 +160,12 @@ export async function updateForecast(
             `Changing current market tick from ${session.detectedCycleTick} to ${newPredictedCycleTick}.`,
         );
       if (!has4s) {
-        const reanchorCooldownTicks = Math.max(
-          0,
-          Number(session.options['pre-4s-post-reanchor-buy-cooldown'] ?? 0),
-        );
+        const reanchorCooldownTicks = Math.max(0, Number(session.options['pre-4s-post-reanchor-buy-cooldown'] ?? 0));
         if (reanchorCooldownTicks > 0)
-          session.reanchorBuyCooldownRemaining = Math.max(session.reanchorBuyCooldownRemaining, reanchorCooldownTicks + 1);
+          session.reanchorBuyCooldownRemaining = Math.max(
+            session.reanchorBuyCooldownRemaining,
+            reanchorCooldownTicks + 1,
+          );
       }
       session.marketCycleDetected = true;
       session.detectedCycleTick = newPredictedCycleTick;

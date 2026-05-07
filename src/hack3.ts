@@ -97,8 +97,8 @@ export async function main(ns: NS): Promise<void> {
       const hostCandidates = new Map(
         allServerNames.map((s) => [s.hostname, { hostname: s.hostname, name: s.name, depth: s.depth }]),
       );
-      for (const name of ns.getPurchasedServers()) {
-        if (name === 'pserv-share') continue;
+      for (const name of ns.cloud.getServerNames()) {
+        if (name === 'cloud-share') continue;
         if (!hostCandidates.has(name)) hostCandidates.set(name, { hostname: name, name, depth: 1 });
       }
       const hacknetHostnames = [...hostCandidates.keys()].filter((hostname) => hostname.startsWith('hacknet')).sort();
@@ -106,7 +106,7 @@ export async function main(ns: NS): Promise<void> {
       const hacknetIncludedInAvailable = new Set(hacknetHostnames.slice(0, hacknetIncludeCount));
 
       const availableServers = [...hostCandidates.values()].filter((server) => {
-        if (server.hostname === 'pserv-share') return false;
+        if (server.hostname === 'cloud-share') return false;
         if (server.hostname.startsWith('hacknet') && !hacknetIncludedInAvailable.has(server.hostname)) return false;
         try {
           return ns.hasRootAccess(server.hostname) && ns.getServerMaxRam(server.hostname) >= scriptBaseCost;
@@ -117,6 +117,7 @@ export async function main(ns: NS): Promise<void> {
 
       const hostServers = availableServers
         .map((server) => {
+          const serverData = ns.getServer(server.hostname) as Partial<Server>;
           const maxRam = ns.getServerMaxRam(server.hostname);
           const usedRam = ns.getServerUsedRam(server.hostname);
           let availableRam = Math.floor(maxRam - usedRam);
@@ -132,24 +133,26 @@ export async function main(ns: NS): Promise<void> {
           return {
             ...server,
             hostname: server.hostname,
+            requiredHackingSkill: serverData.requiredHackingSkill ?? 0,
+            moneyMax: serverData.moneyMax ?? 0,
+            purchasedByPlayer: serverData.purchasedByPlayer ?? false,
             availableRam,
             availableThreads,
           };
         })
-        .filter(
-          (server) =>
-            server.availableThreads > 0 && ns.getServerRequiredHackingLevel(server.hostname) <= ns.getHackingLevel(),
-        );
+        .filter((server) => server.availableThreads > 0 && server.requiredHackingSkill <= ns.getHackingLevel());
 
       const totalThreads = hostServers.reduce((acc, s) => acc + s.availableThreads, 0);
 
       const targetServers = availableServers
         .filter((server) => {
-          const isPurchasedServer = ns.getPurchasedServers().includes(server.hostname);
+          const serverData = ns.getServer(server.hostname) as Partial<Server>;
+          const isCloudServer = ns.cloud.getServerNames().includes(server.hostname);
           const isHomeServer = server.hostname === 'home';
-          const holdsNoMoney = ns.getServerMaxMoney(server.hostname) === 0;
-          const ableToHack = ns.getServerRequiredHackingLevel(server.hostname) <= ns.getHackingLevel();
-          return ableToHack && !isPurchasedServer && !isHomeServer && !holdsNoMoney;
+          const holdsNoMoney = (serverData.moneyMax ?? 0) === 0;
+          const ableToHack = (serverData.requiredHackingSkill ?? 0) <= ns.getHackingLevel();
+          const isPurchased = serverData.purchasedByPlayer ?? false;
+          return ableToHack && !isCloudServer && !isHomeServer && !holdsNoMoney && !isPurchased;
         })
         .map((server) => {
           const optimalServer = getOptimalServer({ ns, targetServer: server.hostname });
@@ -370,7 +373,9 @@ async function chooseTargets({
         growEvents.push(
           ...allocateThreads(tempHostServers, growThreadsNeeded, targetServer.hostname, 'grow', growStock, 1),
         );
-        growEvents.push(...allocateThreads(tempHostServers, weaken2ThreadsNeeded, targetServer.hostname, 'weaken2', false, 1));
+        growEvents.push(
+          ...allocateThreads(tempHostServers, weaken2ThreadsNeeded, targetServer.hostname, 'weaken2', false, 1),
+        );
         if (growEvents.length > 0) prepReasonCounts.growAllocated++;
       } else {
         // Partial prep fallback: run the largest grow+weaken2 slice that fits current thread budget.
@@ -688,11 +693,11 @@ function findOptimalHackFraction(
 
 function findFallbackHost(ns: NS, hostnames: string[], failedHost: string, threads: number): string | null {
   const ramNeeded = threads * scriptBaseCost;
-  // Merge planned hosts with current purchased servers — pserv-opt may have
+  // Merge planned hosts with current cloud servers — cloud-opt may have
   // added replacements that weren't in the original snapshot.
   const candidates = new Set(hostnames);
-  for (const ps of ns.getPurchasedServers()) {
-    if (ps !== 'pserv-share') candidates.add(ps);
+  for (const ps of ns.cloud.getServerNames()) {
+    if (ps !== 'cloud-share') candidates.add(ps);
   }
   candidates.add('home');
   for (const host of candidates) {
@@ -795,7 +800,7 @@ async function schedule({
 
         const execArgs = stockArg !== undefined ? [target, threads, waitTime, stockArg] : [target, threads, waitTime];
 
-        // Guard against servers deleted mid-cycle (e.g. pserv-opt upgrading)
+        // Guard against servers deleted mid-cycle (e.g. cloud-opt upgrading)
         try {
           ns.getServerMaxRam(host);
           pid = ns.exec(script, host, threads, ...execArgs);

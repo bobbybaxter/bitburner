@@ -11,7 +11,13 @@ export const DOMAINS = {
   all: estimateAllValue,
 };
 
-export function estimateHackingValue(aug) {
+interface AugmentationInfo {
+  name: string;
+  stats: Record<string, number>;
+  value: Record<string, number>;
+}
+
+export function estimateHackingValue(aug: AugmentationInfo) {
   const stats = aug.stats;
   let value =
     (stats.hacking_mult || 1) *
@@ -34,7 +40,7 @@ export function estimateHackingValue(aug) {
   return value;
 }
 
-export function estimateCombatValue(aug) {
+export function estimateCombatValue(aug: AugmentationInfo) {
   const stats = aug.stats;
   return (
     Math.sqrt(stats.agility_exp_mult || 1) * (stats.agility_mult || 1) -
@@ -49,17 +55,17 @@ export function estimateCombatValue(aug) {
   );
 }
 
-export function estimateCharismaValue(aug) {
+export function estimateCharismaValue(aug: AugmentationInfo) {
   const stats = aug.stats;
   return Math.sqrt(stats.charisma_exp_mult || 1) * (stats.charisma_mult || 1);
 }
 
-export function estimateCrimeValue(aug) {
+export function estimateCrimeValue(aug: AugmentationInfo) {
   const stats = aug.stats;
   return (stats.crime_money_mult || 1) * (stats.crime_success_mult || 1) - 1 + 1;
 }
 
-export function estimateFactionValue(aug) {
+export function estimateFactionValue(aug: AugmentationInfo) {
   const stats = aug.stats;
   let value =
     (stats.company_rep_mult || 1) -
@@ -76,7 +82,7 @@ export function estimateFactionValue(aug) {
   return value;
 }
 
-export function estimateHacknetValue(aug) {
+export function estimateHacknetValue(aug: AugmentationInfo) {
   const stats = aug.stats;
   return (
     1 / (stats.hacknet_node_purchase_cost_mult || 1) -
@@ -90,7 +96,7 @@ export function estimateHacknetValue(aug) {
   );
 }
 
-export function estimateBladeburnerValue(aug) {
+export function estimateBladeburnerValue(aug: AugmentationInfo) {
   const stats = aug.stats;
   let value =
     Math.sqrt(stats.agility_exp_mult || 1) * (stats.agility_mult || 1) -
@@ -110,13 +116,13 @@ export function estimateBladeburnerValue(aug) {
   return value;
 }
 
-export function estimateAllValue(aug) {
+export function estimateAllValue(aug: AugmentationInfo) {
   // assume this runs after other values have been populated.
   delete aug.value.all;
   return averageValue(aug);
 }
 
-export function averageValue(aug, domains) {
+export function averageValue(aug: AugmentationInfo, domains: string[] = []) {
   if (!domains || domains.length == 0) {
     domains = Object.keys(aug.value);
   }

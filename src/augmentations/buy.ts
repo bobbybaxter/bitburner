@@ -10,7 +10,7 @@ run /augmentations/buy.js [ hacking | charisma | combat | crime | faction | hack
 
 */
 
-import type { NS } from '@ns';
+import type { FactionName, NS } from '@ns';
 import type { AugmentationInfo } from 'augmentations/info.js';
 import { averageValue, DOMAINS, getAllAugmentations, getAugmentationInfo } from 'augmentations/info.js';
 import { Do } from 'helpers/do.js';
@@ -69,8 +69,8 @@ export async function main(ns: NS): Promise<void> {
   for (const aug of augPlan) {
     const augValue = averageValue(aug as { value?: Record<string, number> }, domains);
     const value = augValue.toFixed(2);
-    const factionName = typeof aug.canPurchaseFrom === 'string' ? aug.canPurchaseFrom : aug.canPurchaseFrom?.name;
-    summary.push(`  '${aug.name}' (${value}x) from ${factionName} for ${ns.formatNumber(aug.price ?? 0)}`);
+    const factionName = aug.canPurchaseFrom;
+    summary.push(`  '${aug.name}' (${value}x) from ${factionName} for ${ns.format.number(aug.price ?? 0)}`);
   }
   ns.tprint(summary.join('\n'), '\n');
 
@@ -89,12 +89,12 @@ export async function buyAugs(ns: NS, domains: string[], { cheap = false } = {})
   while (selectedAugs.length > 0) {
     const aug = selectedAugs.shift()!;
     plannedAugs[aug.name] = true;
-    const factionName = typeof aug.canPurchaseFrom === 'string' ? aug.canPurchaseFrom : aug.canPurchaseFrom?.name;
+    const factionName = aug.canPurchaseFrom;
     const price = aug.price ?? 0;
     if (factionName && price <= ns.getPlayer().money) {
       const success = (await Do(ns, 'ns.singularity.purchaseAugmentation', factionName, aug.name)) as boolean;
       if (success) {
-        ns.tprint(`Purchased '${aug.name}' from ${factionName} for ${ns.formatNumber(price)}`);
+        ns.tprint(`Purchased '${aug.name}' from ${factionName} for ${ns.format.number(price)}`);
       } else {
         ns.print(`WARN: Failed to purchase '${aug.name}' from ${factionName} (API returned false)`);
       }
@@ -102,7 +102,7 @@ export async function buyAugs(ns: NS, domains: string[], { cheap = false } = {})
       ns.print(`WARN: Skipped '${aug.name}' — no valid faction to purchase from`);
     } else {
       ns.print(
-        `WARN: Skipped '${aug.name}' — costs ${ns.formatNumber(price)} but only have ${ns.formatNumber(ns.getPlayer().money)}`,
+        `WARN: Skipped '${aug.name}' — costs ${ns.format.number(price)} but only have ${ns.format.number(ns.getPlayer().money)}`,
       );
     }
     selectedAugs = (await selectAugs(ns, domains, plannedAugs, { cheap })).filter(
@@ -128,13 +128,13 @@ export async function buyNfgAndInstall(ns: NS): Promise<void> {
     if (nfgPrice > ns.getPlayer().money) break;
 
     const faction = await canPurchaseFrom(ns, nfgInfo);
-    const factionName = typeof faction === 'string' ? faction : faction?.name;
+    const factionName = faction;
     if (!factionName) break;
 
     const success = (await Do(ns, 'ns.singularity.purchaseAugmentation', factionName, 'NeuroFlux Governor')) as boolean;
     if (success) {
       nfgBought++;
-      ns.tprint(`Purchased NeuroFlux Governor #${nfgBought} from ${factionName} for ${ns.formatNumber(nfgPrice)}`);
+      ns.tprint(`Purchased NeuroFlux Governor #${nfgBought} from ${factionName} for ${ns.format.number(nfgPrice)}`);
     } else {
       break;
     }
@@ -150,11 +150,9 @@ export async function planAugs(
   ns: NS,
   domains: string[],
   { cheap = false } = {},
-): Promise<
-  Array<AugmentationInfo & { canPurchaseFrom?: string | { name: string }; price?: number; sortKey?: number }>
-> {
+): Promise<Array<AugmentationInfo & { canPurchaseFrom?: FactionName; price?: number; sortKey?: number }>> {
   type PlannedAug = AugmentationInfo & {
-    canPurchaseFrom?: string | { name: string };
+    canPurchaseFrom?: FactionName;
     price?: number;
     sortKey?: number;
   };
@@ -179,7 +177,7 @@ export async function selectAugs(
 ): Promise<
   Array<
     AugmentationInfo & {
-      canPurchaseFrom?: string | { name: string };
+      canPurchaseFrom?: FactionName;
       price?: number;
       sortKey?: number;
     }
@@ -217,19 +215,18 @@ export async function getKnownAugs(
   Record<
     string,
     AugmentationInfo & {
-      canPurchaseFrom?: string | { name: string };
+      canPurchaseFrom?: FactionName;
       sortKey?: number;
     }
   >
 > {
   const augs = (await getAllAugmentations(ns)) as Record<
     string,
-    AugmentationInfo & { canPurchaseFrom?: string | { name: string }; sortKey?: number }
+    AugmentationInfo & { canPurchaseFrom?: FactionName; sortKey?: number }
   >;
   for (const [, aug] of Object.entries(augs)) {
     const canPurchase = await canPurchaseFrom(ns, aug, plannedAugs);
-    (aug as AugmentationInfo & { canPurchaseFrom?: string | { name: string } | null }).canPurchaseFrom =
-      canPurchase ?? undefined;
+    (aug as AugmentationInfo & { canPurchaseFrom?: FactionName | null }).canPurchaseFrom = canPurchase ?? undefined;
     (aug as AugmentationInfo & { sortKey?: number }).sortKey = aug.price;
     if (aug.name === 'NeuroFlux Governor') {
       (aug as AugmentationInfo & { sortKey?: number }).sortKey = 1e3;
@@ -257,7 +254,7 @@ export async function canPurchaseFrom(
   ns: NS,
   aug: AugmentationInfo,
   plannedAugs: Record<string, unknown> = {},
-): Promise<string | { name: string } | null> {
+): Promise<FactionName | null> {
   const ownedAugs = (await Do(ns, 'ns.singularity.getOwnedAugmentations', true)) as string[];
   for (const prereq of aug.prereqs ?? []) {
     if (!(ownedAugs.includes(prereq) || prereq in plannedAugs)) {
@@ -266,7 +263,7 @@ export async function canPurchaseFrom(
   }
   for (const faction of aug.factions ?? []) {
     if (faction.rep >= faction.repReq) {
-      return faction;
+      return faction.name as FactionName;
     }
   }
   return null;

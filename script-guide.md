@@ -62,6 +62,20 @@ run hack3.js
 
 ---
 
+## cloud-opt.ts
+
+**What it does:** Optimizes purchased servers. Buys new servers at increasing RAM tiers (128GB → 2TB → 32TB → 512TB → … up to 1PB) when you have the slots and funds. When at server limit, upgrades the smallest server by deleting and repurchasing. Only buys when cash ≥ cost / 0.25 (configurable `moneyThreshold`).
+
+**How to run:**
+
+```bash
+run cloud-opt.js
+```
+
+- No parameters. Runs indefinitely. Config in code: `initialMulti` (7 = 128GB), `moneyThreshold` (0.25).
+
+---
+
 ## contract-auto-solver.ts
 
 **What it does:** Walks the network with a depth-first search and automatically solves any coding contracts (`.cct` files) found on each server. Uses the `solveContract` helper for each contract type. High RAM (27GB) due to contract solvers.
@@ -90,20 +104,6 @@ run hacknet-opt.js 1 80         # 1 level per upgrade, use 80% of HackNet budget
 
 - **Arg 1 (optional):** `numLevels` — how many levels to buy per level upgrade (default: 1).
 - **Arg 2 (optional):** `budgetPct` — percentage of available HackNet budget to spend per purchase (default: 50).
-
----
-
-## pserv-opt.ts
-
-**What it does:** Optimizes purchased servers. Buys new servers at increasing RAM tiers (128GB → 2TB → 32TB → 512TB → … up to 1PB) when you have the slots and funds. When at server limit, upgrades the smallest server by deleting and repurchasing. Only buys when cash ≥ cost / 0.25 (configurable `moneyThreshold`).
-
-**How to run:**
-
-```bash
-run pserv-opt.js
-```
-
-- No parameters. Runs indefinitely. Config in code: `initialMulti` (7 = 128GB), `moneyThreshold` (0.25).
 
 ---
 
@@ -145,22 +145,22 @@ run scan.js
 
 ## share-server.ts
 
-**What it does:** Deploys `helpers/share-loop.js` to a server and runs it with max available threads. The share loop contributes that server's CPU to your current faction (or gang) to earn reputation when idle. Requires a purchased server dedicated to sharing (e.g. `pserv-share`).
+**What it does:** Deploys `helpers/share-loop.js` to a server and runs it with max available threads. The share loop contributes that server's CPU to your current faction (or gang) to earn reputation when idle. Requires a purchased server dedicated to sharing (e.g. `cloud-share`).
 
 **How to run:**
 
 ```bash
-run share-server.js                # use default server pserv-share
-run share-server.js pserv-share-1   # specify a different server
+run share-server.js                # use default server cloud-share
+run share-server.js cloud-share-1   # specify a different server
 ```
 
-- **Arg 1 (optional):** Server hostname to share from (default: `pserv-share`). Requires `helpers/share-loop.js` to exist.
+- **Arg 1 (optional):** Server hostname to share from (default: `cloud-share`). Requires `helpers/share-loop.js` to exist.
 
 ---
 
 ## startup.ts
 
-**What it does:** Launches the main automation stack on home: `open-all-ports`, infiltrate, stockmaster, hacknet-opt (1 level, 100% budget), and pserv-opt. One-shot launcher—does not keep running.
+**What it does:** Launches the main automation stack on home: `open-all-ports`, infiltrate, stockmaster, hacknet-opt (1 level, 100% budget), and cloud-opt. One-shot launcher—does not keep running.
 
 **How to run:**
 

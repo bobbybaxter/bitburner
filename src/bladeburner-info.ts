@@ -35,47 +35,47 @@ export async function main(ns: NS) {
     const timeLeft = Math.ceil(cTaskTime - ns.bladeburner.getActionCurrentTime());
     ns.print(` ${art('┣', { color: 255 })}Time Left:  ${art(hms(timeLeft), { color: 255 })}`);
     const stamina = ns.bladeburner.getStamina()[0] / ns.bladeburner.getStamina()[1];
-    ns.print(` ${art('┗', { color: 255 })}Stamina:    ${art(ns.formatPercent(stamina), { color: 255 })}`);
+    ns.print(` ${art('┗', { color: 255 })}Stamina:    ${art(ns.format.percent(stamina), { color: 255 })}`);
     const assCount = ns.bladeburner.getActionCountRemaining('Operations', 'Assassination');
     const assLevel = ns.bladeburner.getActionCurrentLevel('Operations', 'Assassination'),
       maxAssLevel = ns.bladeburner.getActionMaxLevel('Operations', 'Assassination');
     ns.print(divider);
     ns.print('Assassination Info');
-    ns.print(` ${art('┣', { color: 255 })}Current Count: ${art(ns.formatNumber(assCount, 3), { color: 255 })}`);
+    ns.print(` ${art('┣', { color: 255 })}Current Count: ${art(ns.format.number(assCount, 3), { color: 255 })}`);
     ns.print(
-      ` ${art('┣', { color: 255 })}Level(Max):    ${art(ns.formatNumber(assLevel, 2), { color: 255 })}(${art(ns.formatNumber(maxAssLevel, 2), { color: 255 })})`,
+      ` ${art('┣', { color: 255 })}Level(Max):    ${art(ns.format.number(assLevel, 2), { color: 255 })}(${art(ns.format.number(maxAssLevel, 2), { color: 255 })})`,
     );
     const successes = ns.bladeburner.getActionSuccesses('Operations', 'Assassination');
     ns.print(
-      ` ${art('┣', { color: 255 })}Lv Post-Spree: ${art(ns.formatNumber(levelAfter(successes, assCount), 3), { color: 255 })}${levelAfter(successes, assCount) > maxAssLevel ? art('(+' + ns.formatNumber(levelAfter(successes, assCount) - maxAssLevel, 3) + ')', { color: 10 }) : ''}`,
+      ` ${art('┣', { color: 255 })}Lv Post-Spree: ${art(ns.format.number(levelAfter(successes, assCount), 3), { color: 255 })}${levelAfter(successes, assCount) > maxAssLevel ? art('(+' + ns.format.number(levelAfter(successes, assCount) - maxAssLevel, 3) + ')', { color: 10 }) : ''}`,
     );
-    ns.print(` ${art('┣', { color: 255 })}Successes:     ${art(ns.formatNumber(successes, 3), { color: 255 })}`);
+    ns.print(` ${art('┣', { color: 255 })}Successes:     ${art(ns.format.number(successes, 3), { color: 255 })}`);
     const successesToLevel = Math.floor(0.5 * maxAssLevel * (2 * 2.5 + (maxAssLevel - 1))) - successes, // number of additional successes needed for next level up
       successesLeftToGet = successesToLevel - assCount; // factor successes needed after subtracting current assassination count
     ns.print(
-      ` ${art('┗', { color: 255 })}Success to lv: ${art(ns.formatNumber(successesToLevel, 2), { color: 255 })}${successesLeftToGet > 0 ? art('(' + ns.formatNumber(successesLeftToGet, 2) + ')', { color: 10 }) : ''}`,
+      ` ${art('┗', { color: 255 })}Success to lv: ${art(ns.format.number(successesToLevel, 2), { color: 255 })}${successesLeftToGet > 0 ? art('(' + ns.format.number(successesLeftToGet, 2) + ')', { color: 10 }) : ''}`,
     );
     ns.print(divider);
     const unspentPoints = ns.bladeburner.getSkillPoints();
     const rank = ns.bladeburner.getRank();
     const skillLevel = (x: string) => ns.bladeburner.getSkillLevel(x as BladeburnerSkillName);
     ns.print('Skill Info');
-    ns.print(` ${art('┣', { color: 255 })}BB Rank:        ${art(ns.formatNumber(rank, 3), { color: 255 })}`);
-    ns.print(` ${art('┣', { color: 255 })}Skill Points:   ${art(ns.formatNumber(unspentPoints, 3), { color: 255 })}`);
+    ns.print(` ${art('┣', { color: 255 })}BB Rank:        ${art(ns.format.number(rank, 3), { color: 255 })}`);
+    ns.print(` ${art('┣', { color: 255 })}Skill Points:   ${art(ns.format.number(unspentPoints, 3), { color: 255 })}`);
     ns.print(
-      ` ${art('┣', { color: 255 })}Overclock:      ${art(ns.formatNumber(skillLevel('Overclock'), 3), { color: 255 })}`,
+      ` ${art('┣', { color: 255 })}Overclock:      ${art(ns.format.number(skillLevel('Overclock'), 3), { color: 255 })}`,
     );
     ns.print(
-      ` ${art('┣', { color: 255 })}Reaper:         ${art(ns.formatNumber(skillLevel('Reaper'), 3), { color: 255 })}`,
+      ` ${art('┣', { color: 255 })}Reaper:         ${art(ns.format.number(skillLevel('Reaper'), 3), { color: 255 })}`,
     );
     ns.print(
-      ` ${art('┣', { color: 255 })}Evasive System: ${art(ns.formatNumber(skillLevel('Evasive System'), 3), { color: 255 })}`,
+      ` ${art('┣', { color: 255 })}Evasive System: ${art(ns.format.number(skillLevel('Evasive System'), 3), { color: 255 })}`,
     );
     ns.print(
-      ` ${art('┣', { color: 255 })}Hands of Midas: ${art(ns.formatNumber(skillLevel('Hands of Midas'), 3), { color: 255 })}`,
+      ` ${art('┣', { color: 255 })}Hands of Midas: ${art(ns.format.number(skillLevel('Hands of Midas'), 3), { color: 255 })}`,
     );
     ns.print(
-      ` ${art('┗', { color: 255 })}Hyperdrive:     ${art(ns.formatNumber(skillLevel('Hyperdrive'), 3), { color: 255 })}`,
+      ` ${art('┗', { color: 255 })}Hyperdrive:     ${art(ns.format.number(skillLevel('Hyperdrive'), 3), { color: 255 })}`,
     );
     ns.print(divider);
     for (const city of ALL_CITIES) {
@@ -84,8 +84,8 @@ export async function main(ns: NS) {
       ns.print(
         `${art(city, { color: 255 })} ${art(city === ns.bladeburner.getCity() ? '--You are here--' : '', { color: 81 })}`,
       );
-      ns.print(` ${art('┣', { color: 255 })}Est Population: ${art(ns.formatNumber(estPop, 3), { color: 255 })}`);
-      ns.print(` ${art('┗', { color: 255 })}Current Chaos:  ${art(ns.formatNumber(chaos, 3), { color: 255 })}`);
+      ns.print(` ${art('┣', { color: 255 })}Est Population: ${art(ns.format.number(estPop, 3), { color: 255 })}`);
+      ns.print(` ${art('┗', { color: 255 })}Current Chaos:  ${art(ns.format.number(chaos, 3), { color: 255 })}`);
     }
 
     function levelAfter(successes: number, count: number, operation = true, level = 0) {

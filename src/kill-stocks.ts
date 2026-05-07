@@ -7,7 +7,7 @@
 import type { NS } from '@ns';
 
 export async function main(ns: NS): Promise<void> {
-  if (!ns.stock.hasTIXAPIAccess()) {
+  if (!ns.stock.hasTixApiAccess()) {
     ns.tprint('ERROR: Cannot run kill-stocks - no TIX API access.');
     return;
   }
@@ -34,12 +34,12 @@ export async function main(ns: NS): Promise<void> {
       const [sharesLong, , sharesShort] = ns.stock.getPosition(sym);
 
       if (sharesLong > 0) {
-        const gain = ns.stock.getSaleGain(sym, sharesLong, 'Long');
+        const gain = ns.stock.getSaleGain(sym, sharesLong, 'L');
         if (gain > 0) {
           const price = ns.stock.sellStock(sym, sharesLong);
           if (price > 0) {
             ns.tprint(
-              `Sold ${sharesLong.toLocaleString()} long ${sym} @ $${ns.formatNumber(price)} (gain: $${ns.formatNumber(gain)})`,
+              `Sold ${sharesLong.toLocaleString()} long ${sym} @ $${ns.format.number(price)} (gain: $${ns.format.number(gain)})`,
             );
           } else {
             hasPositions = true;
@@ -50,12 +50,12 @@ export async function main(ns: NS): Promise<void> {
       }
 
       if (sharesShort > 0) {
-        const gain = ns.stock.getSaleGain(sym, sharesShort, 'Short');
+        const gain = ns.stock.getSaleGain(sym, sharesShort, 'S');
         if (gain > 0) {
           const price = ns.stock.sellShort(sym, sharesShort);
           if (price > 0) {
             ns.tprint(
-              `Covered ${sharesShort.toLocaleString()} short ${sym} @ $${ns.formatNumber(price)} (gain: $${ns.formatNumber(gain)})`,
+              `Covered ${sharesShort.toLocaleString()} short ${sym} @ $${ns.format.number(price)} (gain: $${ns.format.number(gain)})`,
             );
           } else {
             hasPositions = true;

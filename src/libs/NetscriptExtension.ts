@@ -1,4 +1,4 @@
-import { AutocompleteData, NS, RunOptions, ScriptArg } from '@ns';
+import { AutocompleteData, NS, RunOptions, ScriptArg, Server } from '@ns';
 import { RESERVED_RAM_ON_HOME_SERVER, SHARE_SCRIPT_NAME, STOCK_MARKET_COMMISSION_FEE } from '/libs/constants';
 
 export interface ScanServerInfo {
@@ -214,7 +214,7 @@ export class NetscriptExtension {
     threadOrOptions: number | RunOptions,
     ...scriptArgs: (string | number | boolean)[]
   ): RunScriptResult {
-    const runners = this.ns.getPurchasedServers();
+    const runners = this.ns.cloud.getServerNames();
     if (reverseRunnerList) {
       runners.reverse();
     }
@@ -257,15 +257,15 @@ export class NetscriptExtension {
       const ramPerThread = this.ns.getScriptRam(SHARE_SCRIPT_NAME, 'home');
       const effect = 1 + Math.log(1 + threads) / 25;
       this.ns.tprint(
-        `Threads: ${threads}:. RAM: ${this.ns.formatRam(ramPerThread * threads)}` + `. Effect: ${effect.toFixed(4)}`,
+        `Threads: ${threads}:. RAM: ${this.ns.format.ram(ramPerThread * threads)}` + `. Effect: ${effect.toFixed(4)}`,
       );
     }
   }
 
   getPrivateServersCost(): number {
     let cost = 0;
-    this.ns.getPurchasedServers().forEach((hostname) => {
-      cost += this.ns.getPurchasedServerCost(this.ns.getServerMaxRam(hostname));
+    this.ns.cloud.getServerNames().forEach((hostname) => {
+      cost += this.ns.cloud.getServerCost(this.ns.getServerMaxRam(hostname));
     });
     return cost;
   }
@@ -278,7 +278,7 @@ export class NetscriptExtension {
     // increasedSecurityFor1ThreadGrowing is same for all servers, it's 0 if server reaches max money
     const increasedSecurityFor1ThreadGrowing = 0.004;
 
-    const server = this.ns.getServer(hostname);
+    const server = this.ns.getServer(hostname) as Server;
     const player = this.ns.getPlayer();
 
     // Flow:
@@ -319,7 +319,7 @@ export class NetscriptExtension {
     server.hackDifficulty = server.minDifficulty;
     hackTime = this.ns.formulas.hacking.hackTime(server, player);
 
-    this.ns.print(`${hostname}: HWGW time: ${this.ns.tFormat(weakenTime1 + growTime + weakenTime2 + hackTime)}`);
+    this.ns.print(`${hostname}: HWGW time: ${this.ns.format.time(weakenTime1 + growTime + weakenTime2 + hackTime)}`);
 
     return (server.moneyMax! * hackMoneyRatio) / (weakenTime1 + growTime + weakenTime2 + hackTime);
   }
@@ -332,7 +332,7 @@ export class NetscriptExtension {
     // increasedSecurityFor1ThreadGrowing is same for all servers, it's 0 if server reaches max money
     const increasedSecurityFor1ThreadGrowing = 0.004;
 
-    const server = this.ns.getServer(hostname);
+    const server = this.ns.getServer(hostname) as Server;
     const player = this.ns.getPlayer();
 
     // Flow:
@@ -369,7 +369,7 @@ export class NetscriptExtension {
     server.hackDifficulty = server.minDifficulty;
     hackTime = this.ns.formulas.hacking.hackTime(server, player);
 
-    this.ns.print(`${hostname}: HGW time: ${this.ns.tFormat(growTime + weakenTime + hackTime)}`);
+    this.ns.print(`${hostname}: HGW time: ${this.ns.format.time(growTime + weakenTime + hackTime)}`);
 
     return (server.moneyMax! * hackMoneyRatio) / (growTime + weakenTime + hackTime);
   }

@@ -77,7 +77,7 @@ export async function reportOnAugmentation(ns: NS, augName: string): Promise<str
   summary.push(' ');
   summary.push(`Status: ${aug.installed ? 'Installed' : aug.purchased ? 'Purchased' : 'Not Owned'}`);
   summary.push(' ');
-  summary.push(`Price: ${ns.formatNumber(aug.price ?? 0)}`);
+  summary.push(`Price: ${ns.format.number(aug.price ?? 0)}`);
   summary.push(' ');
   summary.push('Value:');
   for (const [domain, value] of Object.entries(aug.value ?? {})) {
@@ -94,8 +94,8 @@ export async function reportOnAugmentation(ns: NS, augName: string): Promise<str
   summary.push(' ');
   summary.push('Factions:');
   for (const factionInfo of aug.factions ?? []) {
-    const repStr = ns.formatNumber(factionInfo.rep);
-    const repReqStr = ns.formatNumber(factionInfo.repReq);
+    const repStr = ns.format.number(factionInfo.rep);
+    const repReqStr = ns.format.number(factionInfo.repReq);
     summary.push(
       `  ${factionInfo.name}: ${repStr} / ${repReqStr} rep ${factionInfo.rep >= factionInfo.repReq ? '✓' : '✗'}`,
     );

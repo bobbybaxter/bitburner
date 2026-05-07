@@ -1,4 +1,4 @@
-import type { NS } from '@ns';
+import type { NS, Server } from '@ns';
 import { art } from '/helpers/art.js';
 import { getServerNames } from '/helpers/get-server-names.js';
 
@@ -32,8 +32,8 @@ function padR(s: string, w: number): string {
 }
 
 function moneyColumn(ns: NS, avail: number, max: number): string {
-  const a = ns.formatNumber(avail);
-  const m = ns.formatNumber(max);
+  const a = ns.format.number(avail);
+  const m = ns.format.number(max);
   if (max > 0) {
     const pct = ((100 * avail) / max).toFixed(1);
     return `${a} / ${m} (${pct}%)`;
@@ -67,10 +67,10 @@ export async function main(ns: NS): Promise<void> {
   while (true) {
     ns.ui.resizeTail(width, height);
     ns.clearLog();
-    const purchased = new Set(ns.getPurchasedServers());
+    const purchased = new Set(ns.cloud.getServerNames());
     const rows = getServerNames(ns)
       .map(({ hostname }) => {
-        const server = ns.getServer(hostname);
+        const server = ns.getServer(hostname) as Server;
         if (!isNetworkTarget(hostname, purchased, server)) return null;
         const req = server.requiredHackingSkill ?? 0;
         const admin = server.hasAdminRights;

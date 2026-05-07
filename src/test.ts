@@ -16,11 +16,11 @@ export async function main(ns: NS): Promise<void> {
 
   // /** Largest RAM tier whose purchase price fits the money rule. */
   // function bestPurchasableRam(ns: NS, cash: number, threshold: number): number | null {
-  //   const cap = ns.getPurchasedServerMaxRam();
+  //   const cap = ns.cloud.getRamLimit();
   //   let best: number | null = null;
   //   for (const ram of ramTiers(cap)) {
-  //     const cost = ns.getPurchasedServerCost(ram);
-  //     ns.tprint(`Cost of ${ram}GB: ${ns.formatNumber(cost)}`);
+  //     const cost = ns.cloud.getServerCost(ram);
+  //     ns.tprint(`Cost of ${ram}GB: ${ns.format.number(cost)}`);
   //     if (!Number.isFinite(cost) || cost <= 0) continue;
   //     if (canAfford(cash, threshold, cost)) best = ram;
   //   }
@@ -32,8 +32,8 @@ export async function main(ns: NS): Promise<void> {
   // const ram = bestPurchasableRam(ns, cash, threshold);
   // ns.tprint(`Best purchasable RAM: ${ram}`);
 
-  // ns.purchaseServer('pserv-share', 4096);
-  // ns.tprint(`Server purchased: pserv-share 4096GB`);
+  // ns.cloud.purchaseServer('cloud-share', 4096);
+  // ns.tprint(`Server purchased: cloud-share 4096GB`);
 
   ns.tprint(JSON.stringify(ns.singularity.getAugmentationsFromFaction('Chongqing'), null, 2));
 }

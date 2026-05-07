@@ -1,5 +1,5 @@
 import type { NS } from '@ns';
-import { COMMISSION, FOUR_S_API_BASE_COST, FOUR_S_DATA_BASE_COST } from './constants';
+import { COMMISSION, FOUR_S_API_BASE_COST, FOUR_S_DATA_BASE_COST, WSE_ACCOUNT_COST } from './constants';
 import { formatDuration } from './format-duration';
 import { formatMoney } from './format-money';
 import { formatNumberShort } from './format-number-short';
@@ -317,17 +317,24 @@ export async function tryGet4SApi(
   bitnodeMults: BitNodeMults,
   budget: number,
 ): Promise<boolean> {
-  if (await checkAccess(ns, 'has4SDataTIXAPI')) return false;
+  if (await checkAccess(ns, 'has4SDataTixApi')) return false;
+  let hasWse = await checkAccess(ns, 'hasWseAccount');
   const cost4sData = FOUR_S_DATA_BASE_COST * bitnodeMults.FourSigmaMarketDataCost;
   const cost4sApi = FOUR_S_API_BASE_COST * bitnodeMults.FourSigmaMarketDataApiCost;
   let has4S = await checkAccess(ns, 'has4SData');
-  const totalCost = (has4S ? 0 : cost4sData) + cost4sApi;
+  const totalCost = (hasWse ? 0 : WSE_ACCOUNT_COST) + (has4S ? 0 : cost4sData) + cost4sApi;
   if (totalCost > budget) return false;
   let availableMoney = playerStats.money;
   if (availableMoney < totalCost) {
     await liquidate(ns, session);
     availableMoney = (await getPlayerInfo(ns)).money;
     if (availableMoney < totalCost) return false;
+  }
+  if (!hasWse) {
+    if (availableMoney < WSE_ACCOUNT_COST) return false;
+    if (!(await tryBuy(ns, 'purchaseWseAccount'))) return false;
+    hasWse = true;
+    availableMoney = (await getPlayerInfo(ns)).money;
   }
   if (!has4S) {
     if (availableMoney < cost4sData) return false;

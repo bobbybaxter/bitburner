@@ -1,16 +1,12 @@
 /*
-
-/augmentations/unlock.js (39.1 / / 34.1 GB)
-
 List augmentations that can be unlocked soon, sorted by least reputation required.
 Optionally work to unlock them. Use --cheap to prioritize cheapest augs first.
 
 Usage:
 run /augmentations/unlock.js [ hacking | charisma | combat | crime | faction | hacknet | bladeburner | all ... ] [ --begin ] [ --cheap ]
-
 */
 
-import type { NS, Player, PlayerRequirement, Server } from '@ns';
+import { FactionName, FactionWorkType, NS, Player, PlayerRequirement, Server } from '@ns';
 import { canPurchaseFrom } from 'augmentations/buy.js';
 import { type AugmentationInfo, averageValue, DOMAINS, getAllAugmentations } from 'augmentations/info.js';
 import { Do } from 'helpers/do.js';
@@ -25,14 +21,14 @@ import {
 import { installBackdoor } from '/helpers/install-backdoor.js';
 
 interface FactionWithRep {
-  name: string;
+  name: FactionName;
   rep: number;
   repNeeded?: number;
   inviteReqs?: PlayerRequirement[];
 }
 
 /** Bribe via ns.corporation.bribe when valuation ≥ corp bribeThreshold, player is in the faction, and getFactionWorkTypes is non-empty. */
-async function tryCorporationBribeForFactionRep(ns: NS, factionName: string, repNeeded: number): Promise<boolean> {
+async function tryCorporationBribeForFactionRep(ns: NS, factionName: FactionName, repNeeded: number): Promise<boolean> {
   if (!(repNeeded > 0)) {
     return false;
   }
@@ -49,7 +45,7 @@ async function tryCorporationBribeForFactionRep(ns: NS, factionName: string, rep
   const corp = (await Do(ns, 'ns.corporation.getCorporation')) as { valuation: number };
   if (corp.valuation < constants.bribeThreshold) {
     ns.print(
-      `Skipping corp bribe (${factionName}): valuation ${ns.formatNumber(corp.valuation)} < threshold ${ns.formatNumber(constants.bribeThreshold)}.`,
+      `Skipping corp bribe (${factionName}): valuation ${ns.format.number(corp.valuation)} < threshold ${ns.format.number(constants.bribeThreshold)}.`,
     );
     return false;
   }
@@ -58,7 +54,7 @@ async function tryCorporationBribeForFactionRep(ns: NS, factionName: string, rep
     return false;
   }
 
-  const workTypes = (await Do(ns, 'ns.singularity.getFactionWorkTypes', factionName)) as unknown[];
+  const workTypes = (await Do(ns, 'ns.singularity.getFactionWorkTypes', factionName)) as FactionWorkType[];
   if (workTypes.length === 0) {
     ns.print(`Skipping corp bribe (${factionName}): faction offers no work types.`);
     return false;
@@ -73,7 +69,7 @@ async function tryCorporationBribeForFactionRep(ns: NS, factionName: string, rep
   const money = ns.getPlayer().money;
   if (bribeAmount > money) {
     ns.print(
-      `Skipping corp bribe (${factionName}): need ${ns.formatNumber(bribeAmount)} cash, have ${ns.formatNumber(money)}.`,
+      `Skipping corp bribe (${factionName}): need ${ns.format.number(bribeAmount)} cash, have ${ns.format.number(money)}.`,
     );
     return false;
   }
@@ -81,7 +77,7 @@ async function tryCorporationBribeForFactionRep(ns: NS, factionName: string, rep
   const ok = (await Do(ns, 'ns.corporation.bribe', factionName, bribeAmount)) as boolean;
   if (ok) {
     ns.tprint(
-      `Corp bribe: paid ${ns.formatNumber(bribeAmount)} to ${factionName} for ~${ns.formatNumber(repNeeded, 3)} rep toward next aug.`,
+      `Corp bribe: paid ${ns.format.number(bribeAmount)} to ${factionName} for ~${ns.format.number(repNeeded, 3)} rep toward next aug.`,
     );
   } else {
     ns.print(`Corp bribe to ${factionName} failed (API returned false).`);
@@ -144,13 +140,13 @@ export async function main(ns: NS): Promise<void> {
   for (const aug of futureAugs) {
     const value = averageValue(aug as { value?: Record<string, number> }, domains).toFixed(2);
     if (aug.moneyOnly) {
-      const factionName = purchaseFactionName(aug.canPurchaseFrom) ?? 'unknown';
-      summary.push(`\t Need money — ${factionName} for '${aug.name}' (${value}x, ${ns.formatNumber(aug.price ?? 0)})`);
+      const factionName = aug.canPurchaseFrom ?? 'unknown';
+      summary.push(`\t Need money — ${factionName} for '${aug.name}' (${value}x, ${ns.format.number(aug.price ?? 0)})`);
       continue;
     }
     const faction = aug.workableFaction ?? aug.neededFactions[0] ?? aug.joinableFaction;
     if (!faction) continue;
-    const rep = `\t ${ns.formatNumber(faction.repNeeded ?? 0, 3)}`;
+    const rep = `\t ${ns.format.number(faction.repNeeded ?? 0, 3)}`;
     summary.push(`${rep} more rep - ${faction.name} for '${aug.name}' (${value}x)`);
   }
   ns.tprint(summary.join('\n'), '\n');
@@ -165,8 +161,10 @@ export async function main(ns: NS): Promise<void> {
 export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = {}): Promise<void> {
   let allFutureAugs = await getFutureAugs(ns, { domains, cheap });
   for (const aug of allFutureAugs.filter((a) => a.moneyOnly)) {
-    const factionName = purchaseFactionName(aug.canPurchaseFrom) ?? 'unknown';
-    ns.tprint(`Skipping '${aug.name}' via ${factionName} — have enough rep, need $${ns.formatNumber(aug.price ?? 0)}.`);
+    const factionName = aug.canPurchaseFrom ?? 'unknown';
+    ns.tprint(
+      `Skipping '${aug.name}' via ${factionName} — have enough rep, need $${ns.format.number(aug.price ?? 0)}.`,
+    );
   }
 
   /** Failsafe: without this, a failed join (we assumed success) could spin as fast as Do/getFutureAugs allow. */
@@ -179,7 +177,7 @@ export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = 
       const aug = futureAugs[0];
       const faction = aug.workableFaction;
       ns.tprint(
-        `Next unlock: '${aug.name}' via ${faction?.name ?? 'unknown'} (${ns.formatNumber(faction?.repNeeded ?? 0, 3)} more rep needed).`,
+        `Next unlock: '${aug.name}' via ${faction?.name ?? 'unknown'} (${ns.format.number(faction?.repNeeded ?? 0, 3)} more rep needed).`,
       );
       const repNeededForBribe = faction?.repNeeded ?? 0;
       if (
@@ -203,8 +201,16 @@ export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = 
         );
         return;
       }
-      for (const workType of getWorkTypes(ns.getPlayer())) {
-        if (faction && (await Do(ns, 'ns.singularity.workForFaction', faction.name, workType, false))) {
+      if (!faction) {
+        continue;
+      }
+      const availableWorkTypes = (await Do(
+        ns,
+        'ns.singularity.getFactionWorkTypes',
+        faction.name,
+      )) as FactionWorkType[];
+      for (const workType of getWorkTypes(ns.getPlayer(), availableWorkTypes)) {
+        if (await Do(ns, 'ns.singularity.workForFaction', faction.name, workType, false)) {
           ns.print(`Started working for ${faction.name} as ${workType}.`);
           break;
         }
@@ -232,7 +238,7 @@ export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = 
     const joinableFaction = nextAug.joinableFaction!;
 
     ns.tprint(
-      `Next unlock: '${nextAug.name}' — joining ${joinableFaction.name} first (${ns.formatNumber(nextAug.price ?? 0)} needed).`,
+      `Next unlock: '${nextAug.name}' — joining ${joinableFaction.name} first (${ns.format.number(nextAug.price ?? 0)} needed).`,
     );
     const currentlyInFaction = ns.getPlayer().factions.includes(joinableFaction.name);
     if (!currentlyInFaction) {
@@ -586,7 +592,7 @@ async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Prom
 
     if (req.type === 'money') {
       const required = (req as PlayerRequirement & { money: number }).money;
-      ns.tprint(`Need ${ns.formatNumber(required)} money (have ${ns.formatNumber(player.money)}).`);
+      ns.tprint(`Need ${ns.format.number(required)} money (have ${ns.format.number(player.money)}).`);
     }
 
     if (req.type === 'skills') {
@@ -719,7 +725,7 @@ async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Prom
       const required = (req as PlayerRequirement & { reputation: number }).reputation;
       const current = (await Do(ns, 'ns.singularity.getCompanyRep', company)) as number;
       ns.tprint(
-        `Working for ${company} to gain reputation (need ${ns.formatNumber(required)}, have ${ns.formatNumber(current)}).`,
+        `Working for ${company} to gain reputation (need ${ns.format.number(required)}, have ${ns.format.number(current)}).`,
       );
 
       await applyForBestRepPosition(ns, company);
@@ -730,7 +736,7 @@ async function fulfillUnmetRequirements(ns: NS, reqs: PlayerRequirement[]): Prom
         await ns.sleep(10_000);
         const rep = (await Do(ns, 'ns.singularity.getCompanyRep', company)) as number;
         if (rep >= required) {
-          ns.tprint(`Company reputation met: ${company} ${ns.formatNumber(rep)}/${ns.formatNumber(required)}.`);
+          ns.tprint(`Company reputation met: ${company} ${ns.format.number(rep)}/${ns.format.number(required)}.`);
           break;
         }
 
@@ -806,7 +812,7 @@ async function fulfillHacknetRequirement(ns: NS, req: PlayerRequirement): Promis
     const player = ns.getPlayer();
     if (cheapestNode === -1 || cheapestCost > player.money) {
       ns.tprint(
-        `Can't afford hacknet upgrade for ${req.type}: need ${ns.formatNumber(cheapestCost)} (have ${ns.formatNumber(player.money)}). Current: ${totals[config.key]}/${required}.`,
+        `Can't afford hacknet upgrade for ${req.type}: need ${ns.format.number(cheapestCost)} (have ${ns.format.number(player.money)}). Current: ${totals[config.key]}/${required}.`,
       );
       return;
     }
@@ -1048,7 +1054,7 @@ export async function takeActionToJoinFaction(
 interface FutureAug {
   name: string;
   canAccess?: boolean;
-  canPurchaseFrom?: unknown;
+  canPurchaseFrom?: FactionName;
   neededFactions: FactionWithRep[];
   workableFaction?: FactionWithRep | null;
   joinableFaction?: FactionWithRep | null;
@@ -1058,14 +1064,6 @@ interface FutureAug {
   price?: number;
   value?: Record<string, number>;
   moneyOnly?: boolean;
-}
-
-function purchaseFactionName(canPurchaseFrom: unknown): string | undefined {
-  if (typeof canPurchaseFrom === 'string') return canPurchaseFrom;
-  if (canPurchaseFrom && typeof canPurchaseFrom === 'object' && 'name' in canPurchaseFrom) {
-    return (canPurchaseFrom as { name: string }).name;
-  }
-  return undefined;
 }
 
 export async function getFutureAugs(
@@ -1093,7 +1091,7 @@ export async function getFutureAugs(
   }
 
   type AugWithUnlock = AugmentationInfo & {
-    canPurchaseFrom?: unknown;
+    canPurchaseFrom?: FactionName;
     neededFactions: FactionWithRep[];
     workableFaction?: FactionWithRep | null;
     joinableFaction?: FactionWithRep | null;
@@ -1103,10 +1101,10 @@ export async function getFutureAugs(
   const futureAugs = await Promise.all(
     allAugs.map(async (aug): Promise<AugWithUnlock> => {
       const augExt = aug as AugWithUnlock;
-      augExt.canPurchaseFrom = await canPurchaseFrom(ns, aug);
+      augExt.canPurchaseFrom = (await canPurchaseFrom(ns, aug)) ?? undefined;
       augExt.moneyOnly = !!augExt.canPurchaseFrom && (aug.price ?? 0) > player.money;
       augExt.neededFactions = factionsToWork(
-        aug as { canPurchaseFrom?: unknown; factions?: FactionWithRep[]; repReq?: number },
+        aug as { canPurchaseFrom?: FactionName; factions?: FactionWithRep[]; repReq?: number },
         factionOrderMap,
       );
 
@@ -1141,8 +1139,8 @@ export async function getFutureAugs(
     })
     .sort((a, b) => {
       if (cheap) return (a.price ?? 0) - (b.price ?? 0);
-      const aFaction = a.neededFactions[0]?.name ?? purchaseFactionName(a.canPurchaseFrom);
-      const bFaction = b.neededFactions[0]?.name ?? purchaseFactionName(b.canPurchaseFrom);
+      const aFaction = a.neededFactions[0]?.name ?? a.canPurchaseFrom;
+      const bFaction = b.neededFactions[0]?.name ?? b.canPurchaseFrom;
       const orderDiff = (factionOrderMap[aFaction ?? ''] ?? 0) - (factionOrderMap[bFaction ?? ''] ?? 0);
       if (orderDiff !== 0) return orderDiff;
       return (b.sortKey ?? 0) - (a.sortKey ?? 0);
@@ -1152,7 +1150,7 @@ export async function getFutureAugs(
 }
 
 export function factionsToWork(
-  aug: { canPurchaseFrom?: unknown; factions?: FactionWithRep[]; repReq?: number },
+  aug: { canPurchaseFrom?: FactionName; factions?: FactionWithRep[]; repReq?: number },
   factionOrderMap: Record<string, number>,
 ): FactionWithRep[] {
   if (aug.canPurchaseFrom || !aug.factions) return [];
@@ -1270,18 +1268,28 @@ export async function findBestFactionToWorkFor(
   return { workableFaction, joinableFaction };
 }
 
-export function getWorkTypes(player: Player): string[] {
-  if (player.skills.hacking > player.skills.strength) {
-    return ['hacking contracts', 'field work', 'security'];
-  } else {
-    return ['field work', 'security', 'hacking contracts'];
-  }
+export function getWorkTypes(player: Player, availableWorkTypes: FactionWorkType[]): FactionWorkType[] {
+  const rank = (workType: FactionWorkType): number => {
+    const lower = workType.toLowerCase();
+    if (player.skills.hacking > player.skills.strength) {
+      if (lower.includes('hack')) return 0;
+      if (lower.includes('field')) return 1;
+      if (lower.includes('security')) return 2;
+      return 3;
+    }
+    if (lower.includes('field')) return 0;
+    if (lower.includes('security')) return 1;
+    if (lower.includes('hack')) return 2;
+    return 3;
+  };
+
+  return [...availableWorkTypes].sort((a, b) => rank(a) - rank(b));
 }
 
 /**
  * Returns the faction location group that the player is currently in
  */
-export function getPlayerLocationFactionGroup(player: Player): string[][] {
+export function getPlayerLocationFactionGroup(player: Player): FactionName[][] {
   const currentFactions = player.factions;
   return LOCATION_FACTION_GROUPS.filter((factions) => {
     return factions.some((faction) => currentFactions.includes(faction));

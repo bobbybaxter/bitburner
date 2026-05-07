@@ -1,3 +1,5 @@
+//
+
 import type { NS } from '@ns';
 import { TIX_API_COST, WSE_ACCOUNT_COST } from './constants';
 import { formatDuration } from './format-duration';
@@ -82,7 +84,7 @@ export async function sellShortWrapper(ns: NS, sym: string, numShares: number): 
 
 export async function checkAccess(
   ns: NS,
-  stockFn: 'hasWSEAccount' | 'hasTIXAPIAccess' | 'has4SData' | 'has4SDataTIXAPI',
+  stockFn: 'hasWseAccount' | 'hasTixApiAccess' | 'has4SData' | 'has4SDataTixApi',
 ): Promise<boolean> {
   return (await getNsDataThroughFile(ns, `ns.stock.${stockFn}()`, `/Temp/stock-${stockFn}.txt`)) as boolean;
 }
@@ -95,8 +97,8 @@ export async function tryBuy(
 }
 
 export async function tryGetStockMarketAccess(ns: NS, session: TradingSession, budget: number): Promise<boolean> {
-  if (await checkAccess(ns, 'hasTIXAPIAccess')) return true;
-  const hasWSE = await checkAccess(ns, 'hasWSEAccount');
+  if (await checkAccess(ns, 'hasTixApiAccess')) return true;
+  const hasWSE = await checkAccess(ns, 'hasWseAccount');
   const totalCost = (hasWSE ? 0 : WSE_ACCOUNT_COST) + TIX_API_COST;
   if (totalCost > budget) return false;
   if (!hasWSE) {

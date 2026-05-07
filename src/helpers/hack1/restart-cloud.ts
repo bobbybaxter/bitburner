@@ -1,15 +1,15 @@
 import { NS } from '@ns';
 
 /**
- * Restarts all pservs on the home server
+ * Restarts all cloud servers on the home server
  */
 export async function main(ns: NS): Promise<void> {
   const OPTIMAL_TARGET = ns.read('/constants/optimal-target.txt');
   const HACK_SCRIPT_PATH = '/hack1-helpers/hack1-script.js';
   const HACK_SCRIPT_SIZE = 2.4;
-  const pservs = ns.getPurchasedServers();
+  const cloudServers = ns.cloud.getServerNames();
 
-  pservs.forEach((hostname) => {
+  cloudServers.forEach((hostname) => {
     const maxRam = ns.getServerMaxRam(hostname);
     ns.killall(hostname);
 

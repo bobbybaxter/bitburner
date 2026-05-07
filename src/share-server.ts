@@ -1,11 +1,11 @@
 import { NS } from '@ns';
 
 /**
- * Shares RAM on each server (args + always `pserv-share`).
+ * Shares RAM on each server (args + always `cloud-share`).
  */
 export async function main(ns: NS): Promise<void> {
   const fromArgs = ns.args.filter((a): a is string => typeof a === 'string');
-  const servers = [...new Set([...fromArgs, 'pserv-share'])];
+  const servers = [...new Set([...fromArgs, 'cloud-share'])];
 
   for (const server of servers) {
     const serverAvailableRam = ns.getServerMaxRam(server) - ns.getServerUsedRam(server);

@@ -19,12 +19,12 @@ export async function cleanUp(ns: NS, GLOBAL_CHAR_LIMIT: number) {
   for (const c of ALL_CITIES) {
     ns.bladeburner.switchCity(c);
     cleanUpMessage += `\nCity:        ${c}`;
-    cleanUpMessage += `\nOld Chaos:   ${ns.formatNumber(ns.bladeburner.getCityChaos(c), 3)}`;
+    cleanUpMessage += `\nOld Chaos:   ${ns.format.number(ns.bladeburner.getCityChaos(c), 3)}`;
     if (ns.bladeburner.getCityChaos(c) > 50) {
       addLog(ns, 'action', `Diplomacy: ${c}`);
       ns.bladeburner.startAction('General', 'Diplomacy');
       while (ns.bladeburner.getCityChaos(c) > 0) await ns.sleep(0);
-      cleanUpMessage += `\nNew Chaos:   ${ns.formatNumber(ns.bladeburner.getCityChaos(c), 3)}`;
+      cleanUpMessage += `\nNew Chaos:   ${ns.format.number(ns.bladeburner.getCityChaos(c), 3)}`;
     } else {
       addLog(ns, 'action', `Diplomacy: ${c} - Skipped`);
       cleanUpMessage += '\n***Diplomacy Skipped***';
@@ -33,7 +33,7 @@ export async function cleanUp(ns: NS, GLOBAL_CHAR_LIMIT: number) {
       check1 = ns.bladeburner.getCityChaos(c) === 0,
       check2 = ns.bladeburner.getActionTime('Operations', 'Investigation') === 1000,
       check3 = ns.bladeburner.getActionEstimatedSuccessChance('Operations', 'Investigation')[1] > 0.99;
-    cleanUpMessage += `\nOld Est Pop: ${ns.formatNumber(popStart, 3)}`;
+    cleanUpMessage += `\nOld Est Pop: ${ns.format.number(popStart, 3)}`;
     if (check1 && check2 && check3) {
       addLog(ns, 'action', `Investigations: ${c}`);
       ns.bladeburner.startAction('Operations', 'Investigation');
@@ -41,7 +41,7 @@ export async function cleanUp(ns: NS, GLOBAL_CHAR_LIMIT: number) {
       ns.bladeburner.stopBladeburnerAction();
       addLog(ns, 'action', `Investigations: ${c} - complete`);
       const popEnd = ns.bladeburner.getCityEstimatedPopulation(c);
-      cleanUpMessage += `\nNew Est Pop: ${ns.formatNumber(popEnd, 3)} (${popEnd - popStart > 0 ? '+' + ns.formatNumber(popEnd - popStart, 3) : ns.formatNumber(popEnd - popStart, 3)})`;
+      cleanUpMessage += `\nNew Est Pop: ${ns.format.number(popEnd, 3)} (${popEnd - popStart > 0 ? '+' + ns.format.number(popEnd - popStart, 3) : ns.format.number(popEnd - popStart, 3)})`;
     } else {
       addLog(ns, 'action', `Investigations: ${c} - skipped`);
       cleanUpMessage += '\n***Investigations Skipped***';
@@ -57,7 +57,7 @@ export async function cleanUp(ns: NS, GLOBAL_CHAR_LIMIT: number) {
   const endTime = new Date(),
     folder = '/bladeburner_reports/',
     fileName = 'cleanup_' + (endTime.getMonth() + 1) + '-' + endTime.getDate() + '-' + endTime.getFullYear() + '.txt';
-  cleanUpMessage += `\nMoving BBHQ to highest est pop: ${highestPop.name}\n${endTime.toLocaleString()} - clean up phase ended\n${endTime.getTime() - startTime.getTime() > 60 * 1000 ? ns.formatNumber((endTime.getTime() - startTime.getTime()) / 1000 / 60) + ' minutes' : endTime.getTime() - startTime.getTime() > 1000 ? ns.formatNumber((endTime.getTime() - startTime.getTime()) / 1000) + ' seconds' : ns.formatNumber(endTime.getTime() - startTime.getTime(), 0) + 'ms'} to finish clean up`;
+  cleanUpMessage += `\nMoving BBHQ to highest est pop: ${highestPop.name}\n${endTime.toLocaleString()} - clean up phase ended\n${endTime.getTime() - startTime.getTime() > 60 * 1000 ? ns.format.number((endTime.getTime() - startTime.getTime()) / 1000 / 60) + ' minutes' : endTime.getTime() - startTime.getTime() > 1000 ? ns.format.number((endTime.getTime() - startTime.getTime()) / 1000) + ' seconds' : ns.format.number(endTime.getTime() - startTime.getTime(), 0) + 'ms'} to finish clean up`;
   ns.tprint(cleanUpMessage);
   ns.write(folder + fileName, cleanUpMessage, 'w');
 }

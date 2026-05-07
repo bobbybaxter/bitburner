@@ -1,3 +1,5 @@
+//
+
 import { NS } from '@ns';
 import { DAEMON_SCRIPT_NAME } from '/libs/constants';
 import { NetscriptExtension } from '/libs/NetscriptExtension';
@@ -20,6 +22,26 @@ let runCorpTest = false;
 
 const STOCK_HUD_ROW_ATTR = 'data-custom-hud-stock-row';
 const KARMA_HUD_ROW_ATTR = 'data-custom-hud-karma-row';
+
+type BitburnerSaveData = string | Uint8Array;
+type AllServersSnapshot = unknown;
+type BitburnerGlobal = typeof globalThis & {
+  AllServers: {
+    saveAllServers(): AllServersSnapshot;
+    loadAllServers(servers: AllServersSnapshot): void;
+  };
+  SaveObject: {
+    loadGame(saveData: BitburnerSaveData): void;
+    saveObject: {
+      getSaveData(
+        includeRunningScripts: boolean,
+        includeSaveTimestamp: boolean,
+      ): BitburnerSaveData | Promise<BitburnerSaveData>;
+    };
+  };
+};
+
+const bitburnerGlobal = globalThis as BitburnerGlobal;
 
 /** Clone a vanilla overview row (same pattern as stockmaster `helpers/stockmaster/hud.ts` `initializeHud`). */
 function cloneOverviewStatRow(doc: Document): { row: HTMLElement; labelEl: HTMLElement; valueEl: HTMLElement } {
@@ -381,17 +403,17 @@ function createTestingTool() {
         }
         testingTools.updateSaveData('save', saveData).then(() => {
           ns.killall('home');
-          const currentAllServers = globalThis.AllServers.saveAllServers();
-          globalThis.SaveObject.loadGame(saveData);
+          const currentAllServers = bitburnerGlobal.AllServers.saveAllServers();
+          bitburnerGlobal.SaveObject.loadGame(saveData);
           setTimeout(() => {
-            globalThis.AllServers.loadAllServers(currentAllServers);
+            bitburnerGlobal.AllServers.loadAllServers(currentAllServers);
             ns.exec('daemon.js', 'home', 1, '--maintainCorporation');
           }, 1000);
         });
       });
     });
     doc.getElementById('btn-export-save-data')!.addEventListener('click', async function () {
-      testingTools.insertSaveData(await globalThis.SaveObject.saveObject.getSaveData(true, true)).then(() => {
+      testingTools.insertSaveData(await bitburnerGlobal.SaveObject.saveObject.getSaveData(true, true)).then(() => {
         reloadSaveDataSelectElement().then();
       });
     });
@@ -495,7 +517,7 @@ export async function main(nsContext: NS): Promise<void> {
   headers.push('<div>Scripts</div>');
   values.push("<div id='hud-scripts-count'>0</div>");
   mountKarmaHudRowUnderInt(doc);
-  if (ns.stock.hasWSEAccount()) {
+  if (ns.stock.hasWseAccount()) {
     mountStockHudRowsUnderMoney(doc);
   }
   if (ns.corporation.hasCorporation()) {
@@ -546,17 +568,17 @@ export async function main(nsContext: NS): Promise<void> {
       }
       const hudKarma = doc.getElementById('hud-karma');
       if (hudKarma !== null) {
-        hudKarma.innerText = ns.formatNumber(ns.getPlayer().karma);
+        hudKarma.innerText = ns.format.number(ns.getPlayer().karma);
       }
 
-      if (ns.stock.hasWSEAccount()) {
+      if (ns.stock.hasWseAccount()) {
         const hudStockWorthValue = doc.getElementById('hud-stock-worth');
         if (hudStockWorthValue === null) {
           rerun(ns);
           return;
         }
         const stockStats = nsx.calculateStockStats();
-        hudStockWorthValue.innerText = `$${ns.formatNumber(stockStats.currentWorth)}`;
+        hudStockWorthValue.innerText = `$${ns.format.number(stockStats.currentWorth)}`;
 
         const hudStockmasterStatus = doc.getElementById('hud-stockmaster-status');
         if (hudStockmasterStatus === null) {
@@ -573,7 +595,7 @@ export async function main(nsContext: NS): Promise<void> {
           rerun(ns);
           return;
         }
-        hudTotalFundsValue.innerText = ns.formatNumber(ns.corporation.getCorporation().funds);
+        hudTotalFundsValue.innerText = ns.format.number(ns.corporation.getCorporation().funds);
 
         const hudInvestmentOfferValue = doc.getElementById('hud-investment-offer');
         if (hudInvestmentOfferValue === null) {
@@ -585,7 +607,7 @@ export async function main(nsContext: NS): Promise<void> {
           investmentOffer.round >= 1 && investmentOffer.round <= 4 && investmentOffer.funds > 0;
         setHudRowVisibility('hud-investment-offer-label', 'hud-investment-offer-row', hasRemainingInvestmentOffers);
         if (hasRemainingInvestmentOffers) {
-          hudInvestmentOfferValue.innerText = ns.formatNumber(investmentOffer.funds);
+          hudInvestmentOfferValue.innerText = ns.format.number(investmentOffer.funds);
         }
 
         let isDaemonRunning = false;

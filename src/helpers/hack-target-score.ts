@@ -2,7 +2,7 @@ import { NS, Server } from '@ns';
 import * as formulas from '/helpers/formulas.js';
 
 export function getOptimalServer({ ns, targetServer }: { ns: NS; targetServer: string }): Server {
-  const server = ns.getServer(targetServer);
+  const server = ns.getServer(targetServer) as Server;
   server.moneyAvailable = server.moneyMax;
   server.hackDifficulty = server.minDifficulty;
   return server;
@@ -48,12 +48,13 @@ export function scoreTargetForBatch(ns: NS, hostname: string, referenceHackFract
  */
 export function rankHackTargetsByScore(ns: NS, hostnames: readonly string[]): string[] {
   const hackingLevel = ns.getHackingLevel();
-  const purchased = new Set(ns.getPurchasedServers());
+  const purchased = new Set(ns.cloud.getServerNames());
   const ranked: Array<{ hostname: string; score: number }> = [];
   for (const hostname of hostnames) {
     if (hostname === 'home' || purchased.has(hostname)) continue;
-    if (ns.getServerMaxMoney(hostname) < 1) continue;
-    if (ns.getServerRequiredHackingLevel(hostname) > hackingLevel) continue;
+    const server = ns.getServer(hostname) as Partial<Server>;
+    if ((server.moneyMax ?? 0) < 1) continue;
+    if ((server.requiredHackingSkill ?? 0) > hackingLevel) continue;
     if (!ns.hasRootAccess(hostname)) continue;
     ranked.push({ hostname, score: scoreTargetForBatch(ns, hostname) });
   }

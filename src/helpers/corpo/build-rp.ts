@@ -4,13 +4,13 @@ import { Do } from '../do';
 /** Target role counts when RP threshold is met. Omit Unassigned. */
 export type FinalRoles = Partial<Record<Exclude<CorpEmployeePosition, 'Unassigned'>, number>>;
 
-const ALL_JOBS: CorpEmployeePosition[] = [
-  'Intern',
+const ALL_JOBS: Exclude<CorpEmployeePosition, 'Unassigned'>[] = [
   'Operations',
   'Engineer',
   'Business',
   'Management',
   'Research & Development',
+  'Intern',
 ];
 
 /**
@@ -38,11 +38,11 @@ export async function buildRp({
 
   // Set all employees to R&D
   for (const job of allJobs) {
-    ns.corporation.setAutoJobAssignment(divName, cityTyped, job, 0);
+    await Do(ns, 'ns.corporation.setJobAssignment', divName, cityTyped, job, 0);
   }
   const office = (await Do(ns, 'ns.corporation.getOffice', divName, cityTyped)) as Office;
   const numEmployees = office.numEmployees;
-  await Do(ns, 'ns.corporation.setAutoJobAssignment', divName, cityTyped, 'Research & Development', numEmployees);
+  await Do(ns, 'ns.corporation.setJobAssignment', divName, cityTyped, 'Research & Development', numEmployees);
   await ns.corporation.nextUpdate();
 
   // Wait until division RP reaches threshold
@@ -56,7 +56,7 @@ export async function buildRp({
 
   // Clear all jobs so employees are unassigned, then assign final roles
   for (const job of allJobs) {
-    ns.corporation.setAutoJobAssignment(divName, cityTyped, job, 0);
+    await Do(ns, 'ns.corporation.setJobAssignment', divName, cityTyped, job, 0);
   }
   await ns.corporation.nextUpdate();
 
@@ -66,7 +66,7 @@ export async function buildRp({
     const n = typeof count === 'number' && count > 0 ? count : 0;
     const toAssign = Math.min(n, remaining);
     if (toAssign > 0) {
-      await Do(ns, 'ns.corporation.setAutoJobAssignment', divName, cityTyped, role, toAssign);
+      await Do(ns, 'ns.corporation.setJobAssignment', divName, cityTyped, role, toAssign);
       remaining -= toAssign;
     }
     if (remaining <= 0) break;
@@ -74,7 +74,7 @@ export async function buildRp({
 
   // Any leftover employees stay in R&D
   if (remaining > 0) {
-    await Do(ns, 'ns.corporation.setAutoJobAssignment', divName, cityTyped, 'Research & Development', remaining);
+    await Do(ns, 'ns.corporation.setJobAssignment', divName, cityTyped, 'Research & Development', remaining);
   }
 
   await ns.corporation.nextUpdate();

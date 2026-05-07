@@ -29,7 +29,7 @@ Scripts in `dist/` sync to the game automatically.
 
 This is not a single-script project. Different scripts serve different roles:
 
-- **startup.js** — Launches the background stack (open-all-ports, infiltrate, stockmaster, hacknet-opt, pserv-opt). Requires ~25 GB RAM on home. One-shot; exits after spawning. Run this first to get the baseline automation going.
+- **startup.js** — Launches the background stack (open-all-ports, infiltrate, stockmaster, hacknet-opt, cloud-opt). Requires ~25 GB RAM on home. One-shot; exits after spawning. Run this first to get the baseline automation going.
 - **Hacking** — Run `hack0.js`, `hack1.js`, `hack2.js`, or `hack3.js` depending on your stage and RAM. Each has different targets and strategies.
 - **Other scripts** — `scan.js`, `contract-auto-solver.js`, `share-server.js`, etc.
 

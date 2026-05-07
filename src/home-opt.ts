@@ -1,3 +1,4 @@
+//
 import { NS } from '@ns';
 import { Do } from '/helpers/do.js';
 import { localISOString } from './helpers/local-iso-string.js';
@@ -22,14 +23,14 @@ export async function main(ns: NS): Promise<void> {
     if (!ramMaxed && money >= ramCost) {
       const result = await Do(ns, 'ns.singularity.upgradeHomeRam');
       if (result) {
-        ns.tprint(`${localISOString()} Upgraded home RAM for $${ns.formatNumber(ramCost)}`);
+        ns.tprint(`${localISOString()} Upgraded home RAM for $${ns.format.number(ramCost)}`);
       }
     }
 
     if (!coresMaxed && ns.getPlayer().money >= coreCost) {
       const result = await Do(ns, 'ns.singularity.upgradeHomeCores');
       if (result) {
-        ns.tprint(`${localISOString()} Upgraded home cores for $${ns.formatNumber(coreCost)}`);
+        ns.tprint(`${localISOString()} Upgraded home cores for $${ns.format.number(coreCost)}`);
       }
     }
 
@@ -42,8 +43,8 @@ export async function main(ns: NS): Promise<void> {
 
     if (nextCheapest < Infinity) {
       ns.tprint(
-        `${localISOString()} Next home upgrade: $${ns.formatNumber(nextCheapest)} ` +
-          `(RAM $${ns.formatNumber(nextRamCost)}, cores $${ns.formatNumber(nextCoreCost)})`,
+        `${localISOString()} Next home upgrade: $${ns.format.number(nextCheapest)} ` +
+          `(RAM $${ns.format.number(nextRamCost)}, cores $${ns.format.number(nextCoreCost)})`,
       );
     }
 

@@ -245,7 +245,7 @@ export async function getTargetHandler(
 }
 
 function getServerOptimal(ns: NS, dest: string): Server {
-  const server = ns.getServer(dest);
+  const server = ns.getServer(dest) as Server;
   server.moneyAvailable = server.moneyMax;
   server.hackDifficulty = server.minDifficulty;
   return server;

@@ -1,24 +1,31 @@
-// 4.2GB RAM
-
 import { NS, Server } from '@ns';
 import { getServerNames } from './get-server-names.js';
 import { openPorts } from './open-ports.js';
 
 /**
- * Opens all ports on all servers
+ * Opens every port we have a cracker for on each reachable network server,
+ * then nukes any server whose port requirement is met. Skips servers we
+ * already root, and servers we own (home / purchased / hacknet — all flagged
+ * via Server.purchasedByPlayer in NetscriptDefinitions).
  */
 export async function main(ns: NS): Promise<void> {
   const serverNames = getServerNames(ns).map((server) => server.hostname);
 
   serverNames.forEach((serverName) => {
-    if (serverName === 'home' || serverName.includes('pserv')) return;
+    const server = ns.getServer(serverName) as Server;
 
-    const hydratedServer: Server = ns.getServer(serverName);
-    openPorts(ns, hydratedServer);
-    try {
-      ns.nuke(serverName);
-    } catch (e) {
-      console.error(e);
+    if (server.purchasedByPlayer) return;
+    if (server.hasAdminRights) return;
+
+    const newlyOpened = openPorts(ns, server);
+    const totalOpenPorts = (server.openPortCount ?? 0) + newlyOpened;
+    if (totalOpenPorts < (server.numOpenPortsRequired ?? 0)) return;
+
+    ns.nuke(serverName);
+    if (!ns.hasRootAccess(serverName)) {
+      ns.print(
+        `Failed to nuke ${serverName} after opening ${totalOpenPorts}/${server.numOpenPortsRequired ?? 0} ports.`,
+      );
     }
   });
 }
