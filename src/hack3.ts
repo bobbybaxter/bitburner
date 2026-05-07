@@ -97,7 +97,7 @@ export async function main(ns: NS): Promise<void> {
       const hostCandidates = new Map(
         allServerNames.map((s) => [s.hostname, { hostname: s.hostname, name: s.name, depth: s.depth }]),
       );
-      for (const name of ns.getPurchasedServers()) {
+      for (const name of ns.cloud.getServerNames()) {
         if (name === 'pserv-share') continue;
         if (!hostCandidates.has(name)) hostCandidates.set(name, { hostname: name, name, depth: 1 });
       }
@@ -145,7 +145,7 @@ export async function main(ns: NS): Promise<void> {
 
       const targetServers = availableServers
         .filter((server) => {
-          const isPurchasedServer = ns.getPurchasedServers().includes(server.hostname);
+          const isPurchasedServer = ns.cloud.getServerNames().includes(server.hostname);
           const isHomeServer = server.hostname === 'home';
           const holdsNoMoney = ns.getServerMaxMoney(server.hostname) === 0;
           const ableToHack = ns.getServerRequiredHackingLevel(server.hostname) <= ns.getHackingLevel();
@@ -370,7 +370,11 @@ async function chooseTargets({
         growEvents.push(
           ...allocateThreads(tempHostServers, growThreadsNeeded, targetServer.hostname, 'grow', growStock, 1),
         );
-        growEvents.push(...allocateThreads(tempHostServers, weaken2ThreadsNeeded, targetServer.hostname, 'weaken2', false, 1));
+        growEvents.push(
+          ,
+        
+          ...allocateThreads(tempHostServers, weaken2ThreadsNeeded, targetServer.hostname, 'weaken2', false, 1),
+        );
         if (growEvents.length > 0) prepReasonCounts.growAllocated++;
       } else {
         // Partial prep fallback: run the largest grow+weaken2 slice that fits current thread budget.
@@ -691,7 +695,7 @@ function findFallbackHost(ns: NS, hostnames: string[], failedHost: string, threa
   // Merge planned hosts with current purchased servers — pserv-opt may have
   // added replacements that weren't in the original snapshot.
   const candidates = new Set(hostnames);
-  for (const ps of ns.getPurchasedServers()) {
+  for (const ps of ns.cloud.getServerNames()) {
     if (ps !== 'pserv-share') candidates.add(ps);
   }
   candidates.add('home');

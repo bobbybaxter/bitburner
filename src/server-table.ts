@@ -67,7 +67,7 @@ export async function main(ns: NS): Promise<void> {
   while (true) {
     ns.ui.resizeTail(width, height);
     ns.clearLog();
-    const purchased = new Set(ns.getPurchasedServers());
+    const purchased = new Set(ns.cloud.getServerNames());
     const rows = getServerNames(ns)
       .map(({ hostname }) => {
         const server = ns.getServer(hostname);

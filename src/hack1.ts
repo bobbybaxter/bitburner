@@ -18,12 +18,11 @@ export async function main(ns: NS): Promise<void> {
     const dedicatedHost = typeof ns.args[0] === 'number' || typeof ns.args[0] === 'boolean' ? null : ns.args[0];
     const dedicatedTarget = typeof ns.args[1] === 'number' || typeof ns.args[1] === 'boolean' ? null : ns.args[1];
     const baseHosts = dedicatedHost ? [ns.getServer(dedicatedHost)] : getAllServers(ns);
-    const baseNames = new Set(baseHosts.map((s) => s.hostname));
-    const pservs = ns
-      .getPurchasedServers()
-      .filter((name) => !baseNames.has(name))
+    const cloudServers = ns.cloud
+      .getServerNames()
+      .filter((name) => !name.includes('share'))
       .map((name) => ns.getServer(name));
-    const allHosts = [...baseHosts, ...pservs];
+    const allHosts = [...baseHosts, ...cloudServers] as Server[];
 
     const HACKING_LVL = ns.getHackingLevel();
 

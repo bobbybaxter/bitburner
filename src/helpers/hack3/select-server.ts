@@ -105,7 +105,7 @@ export async function chooseTargets(
       // log(`  remain alloc: ${remainAllocs}`);
       // log(`  remain alloc(returned): ${returnedRemainAllocs}`);
 
-      if (formu.getHackChance(ns, ns.getServer(dest), ns.getPlayer()) < 1) {
+      if (formu.getHackChance(ns, ns.getServer(dest) as Server, ns.getPlayer()) < 1) {
         // log('h ' + dest + ' hacking chance is not 100%, skipping.');
         continue;
       }
@@ -348,7 +348,7 @@ function calDps(
  * @param {string} dest
  */
 function getServerOptimal(ns: NS, dest: string): Server {
-  const server = ns.getServer(dest);
+  const server = ns.getServer(dest) as Server;
   server.moneyAvailable = server.moneyMax;
   server.hackDifficulty = server.minDifficulty;
   return server;

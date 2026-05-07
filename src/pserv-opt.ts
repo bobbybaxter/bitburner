@@ -103,7 +103,7 @@ export async function main(ns: NS): Promise<void> {
   }
 
   while (true) {
-    const owned = ns.getPurchasedServers();
+    const owned = ns.cloud.getServerNames();
     const cash = ns.getPlayer().money;
     const th = CONFIG.moneyThreshold;
 

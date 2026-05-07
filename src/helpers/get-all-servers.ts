@@ -7,11 +7,11 @@ import { getServerNames } from '/constants/seen-server-names.js';
 export function getAllServers(ns: NS, serverNames: string[] = []): Server[] {
   if (serverNames.length === 0) {
     return getServerNames().map((serverName: string) => {
-      return ns.getServer(serverName);
+      return ns.getServer(serverName) as Server;
     });
   } else {
     return serverNames.map((serverName: string) => {
-      return ns.getServer(serverName);
+      return ns.getServer(serverName) as Server;
     });
   }
 }

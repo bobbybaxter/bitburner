@@ -74,10 +74,7 @@ export type LoadStockCoordResult = {
 /**
  * Load stock coordination policy from stockmaster's snapshot. When inactive, callers use no stock: flags.
  */
-export function loadStockCoordPolicy(
-  ns: NS,
-  options: { disabled: boolean; staleMs: number },
-): LoadStockCoordResult {
+export function loadStockCoordPolicy(ns: NS, options: { disabled: boolean; staleMs: number }): LoadStockCoordResult {
   if (options.disabled) {
     return { active: false, policy: new Map(), summary: 'stock coord off (--no-stock-coord)' };
   }

@@ -214,7 +214,7 @@ export class NetscriptExtension {
     threadOrOptions: number | RunOptions,
     ...scriptArgs: (string | number | boolean)[]
   ): RunScriptResult {
-    const runners = this.ns.getPurchasedServers();
+    const runners = this.ns.cloud.getServerNames();
     if (reverseRunnerList) {
       runners.reverse();
     }
@@ -264,7 +264,7 @@ export class NetscriptExtension {
 
   getPrivateServersCost(): number {
     let cost = 0;
-    this.ns.getPurchasedServers().forEach((hostname) => {
+    this.ns.cloud.getServerNames().forEach((hostname) => {
       cost += this.ns.getPurchasedServerCost(this.ns.getServerMaxRam(hostname));
     });
     return cost;
@@ -319,7 +319,7 @@ export class NetscriptExtension {
     server.hackDifficulty = server.minDifficulty;
     hackTime = this.ns.formulas.hacking.hackTime(server, player);
 
-    this.ns.print(`${hostname}: HWGW time: ${this.ns.tFormat(weakenTime1 + growTime + weakenTime2 + hackTime)}`);
+    this.ns.print(`${hostname}: HWGW time: ${this.ns.format.time(weakenTime1 + growTime + weakenTime2 + hackTime)}`);
 
     return (server.moneyMax! * hackMoneyRatio) / (weakenTime1 + growTime + weakenTime2 + hackTime);
   }
@@ -369,7 +369,7 @@ export class NetscriptExtension {
     server.hackDifficulty = server.minDifficulty;
     hackTime = this.ns.formulas.hacking.hackTime(server, player);
 
-    this.ns.print(`${hostname}: HGW time: ${this.ns.tFormat(growTime + weakenTime + hackTime)}`);
+    this.ns.print(`${hostname}: HGW time: ${this.ns.format.time(growTime + weakenTime + hackTime)}`);
 
     return (server.moneyMax! * hackMoneyRatio) / (growTime + weakenTime + hackTime);
   }

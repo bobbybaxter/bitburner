@@ -238,7 +238,7 @@ function checkBackwardsCompatibility(ns: NS, command: string) {
     .replaceAll('cloud.upgradeServer', 'upgradePurchasedServer')
     .replaceAll('cloud.renameServer', 'renamePurchasedServer')
     .replaceAll('cloud.deleteServer', 'deleteServer')
-    .replaceAll('cloud.getServerNames', 'getPurchasedServers')
+    .replaceAll('cloud.getServerNames', 'cloud.getServerNames')
     .replaceAll('cloud.getServerLimit', 'getPurchasedServerLimit')
     .replaceAll('cloud.getRamLimit', 'getPurchasedServerMaxRam');
 
@@ -927,9 +927,7 @@ export async function tryGetBitNodeMultipliers_Custom(ns: NS, fnGetNsDataThrough
         null,
         null,
         /*silent:*/ true,
-      )) as BitNodeMultipliers & Record<string, number | undefined>;
-      // TODO: Remove after v3.0.0 is released on stable.
-      // If running an older version of the game, some property names need to be updated.
+      )) as BitNodeMultipliers & Record<string, number>;
       mults.FavorToDonateToFaction ??= mults.RepToDonateToFaction;
       mults.CloudServerCost ??= mults.PurchasedServerCost;
       mults.CloudServerSoftcap ??= mults.PurchasedServerSoftcap;
@@ -1324,5 +1322,5 @@ export function formatTime(ns: NS, milliseconds: number, milliPrecision?: boolea
   if (isV3(ns)) {
     return (ns.ui as UserInterfaceWithTime).time(milliseconds, milliPrecision);
   }
-  return ns.tFormat(milliseconds, milliPrecision);
+  return ns.format.time(milliseconds, milliPrecision);
 }

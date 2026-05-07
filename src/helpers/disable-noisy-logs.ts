@@ -12,7 +12,7 @@ export function disableNoisyLogs({ disableLog }: { disableLog: (log: string) => 
   // disableLog("sleep");
   // disableLog("getServerMoneyAvailable");
   // disableLog("scan");
-  // disableLog("getPurchasedServers");
+  // disableLog("cloud.getServerNames");
   // disableLog("getServerMaxMoney");
   // disableLog("exec");
   // disableLog("rm");
