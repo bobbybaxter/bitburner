@@ -39,7 +39,7 @@ export async function main(ns: NS): Promise<void> {
           const price = ns.stock.sellStock(sym, sharesLong);
           if (price > 0) {
             ns.tprint(
-              `Sold ${sharesLong.toLocaleString()} long ${sym} @ $${ns.formatNumber(price)} (gain: $${ns.formatNumber(gain)})`,
+              `Sold ${sharesLong.toLocaleString()} long ${sym} @ $${ns.format.number(price)} (gain: $${ns.format.number(gain)})`,
             );
           } else {
             hasPositions = true;
@@ -55,7 +55,7 @@ export async function main(ns: NS): Promise<void> {
           const price = ns.stock.sellShort(sym, sharesShort);
           if (price > 0) {
             ns.tprint(
-              `Covered ${sharesShort.toLocaleString()} short ${sym} @ $${ns.formatNumber(price)} (gain: $${ns.formatNumber(gain)})`,
+              `Covered ${sharesShort.toLocaleString()} short ${sym} @ $${ns.format.number(price)} (gain: $${ns.format.number(gain)})`,
             );
           } else {
             hasPositions = true;

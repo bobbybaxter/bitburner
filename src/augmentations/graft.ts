@@ -63,7 +63,7 @@ export async function main(ns: NS): Promise<void> {
   const graftableAugs = await getGraftableAugs(ns, { domains, cheap });
   const summary = [`Augmentation Grafting Plan: ${domains.join(', ')}${cheap ? ' (cheapest first)' : ''}`];
   for (const aug of graftableAugs) {
-    const price = ns.sprintf('%10s', ns.formatNumber(aug.price));
+    const price = ns.sprintf('%10s', ns.format.number(aug.price));
     summary.push(
       `${price} (${(aug.time / 60 / 60 / 1000).toFixed(1)} hr) for (${aug.totalValue.toFixed(2)}x) '${aug.name}'`,
     );

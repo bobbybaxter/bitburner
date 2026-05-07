@@ -152,16 +152,16 @@ export async function main(ns: NS): Promise<void> {
         if (noReset) {
           if (!noResetOverThresholdLogged) {
             ns.tprint(
-              `Next aug "${nextAug.name}" costs ${ns.formatNumber(nextPrice)} ` +
-                `(>${threshold}x current ${ns.formatNumber(money)}). --no-reset: skipping endgame; waiting for money.`,
+              `Next aug "${nextAug.name}" costs ${ns.format.number(nextPrice)} ` +
+                `(>${threshold}x current ${ns.format.number(money)}). --no-reset: skipping endgame; waiting for money.`,
             );
             noResetOverThresholdLogged = true;
           }
           moneyOnlyLogged = false;
         } else {
           ns.tprint(
-            `Next aug "${nextAug.name}" costs ${ns.formatNumber(nextPrice)} ` +
-              `(>${threshold}x current ${ns.formatNumber(money)}). Starting endgame...`,
+            `Next aug "${nextAug.name}" costs ${ns.format.number(nextPrice)} ` +
+              `(>${threshold}x current ${ns.format.number(money)}). Starting endgame...`,
           );
           await buyNfgAndInstall(ns);
           break;
@@ -176,11 +176,7 @@ export async function main(ns: NS): Promise<void> {
       await unlockAugs(ns, domains);
     } else if (!moneyOnlyLogged) {
       ns.tprint(
-        `Waiting for money to buy: ${nextAug.name} at location: ${
-          typeof nextAug.canPurchaseFrom === 'string'
-            ? nextAug.canPurchaseFrom
-            : ((nextAug.canPurchaseFrom as { name?: string })?.name ?? 'unknown')
-        } for ${ns.formatNumber(nextAug.price ?? 0)}`,
+        `Waiting for money to buy: ${nextAug.name} at location: ${nextAug.canPurchaseFrom ?? 'unknown'} for ${ns.format.number(nextAug.price ?? 0)}`,
       );
       moneyOnlyLogged = true;
     }

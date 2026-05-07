@@ -32,8 +32,8 @@ function padR(s: string, w: number): string {
 }
 
 function moneyColumn(ns: NS, avail: number, max: number): string {
-  const a = ns.formatNumber(avail);
-  const m = ns.formatNumber(max);
+  const a = ns.format.number(avail);
+  const m = ns.format.number(max);
   if (max > 0) {
     const pct = ((100 * avail) / max).toFixed(1);
     return `${a} / ${m} (${pct}%)`;

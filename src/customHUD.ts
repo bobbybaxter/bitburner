@@ -546,7 +546,7 @@ export async function main(nsContext: NS): Promise<void> {
       }
       const hudKarma = doc.getElementById('hud-karma');
       if (hudKarma !== null) {
-        hudKarma.innerText = ns.formatNumber(ns.getPlayer().karma);
+        hudKarma.innerText = ns.format.number(ns.getPlayer().karma);
       }
 
       if (ns.stock.hasWSEAccount()) {
@@ -556,7 +556,7 @@ export async function main(nsContext: NS): Promise<void> {
           return;
         }
         const stockStats = nsx.calculateStockStats();
-        hudStockWorthValue.innerText = `$${ns.formatNumber(stockStats.currentWorth)}`;
+        hudStockWorthValue.innerText = `$${ns.format.number(stockStats.currentWorth)}`;
 
         const hudStockmasterStatus = doc.getElementById('hud-stockmaster-status');
         if (hudStockmasterStatus === null) {
@@ -573,7 +573,7 @@ export async function main(nsContext: NS): Promise<void> {
           rerun(ns);
           return;
         }
-        hudTotalFundsValue.innerText = ns.formatNumber(ns.corporation.getCorporation().funds);
+        hudTotalFundsValue.innerText = ns.format.number(ns.corporation.getCorporation().funds);
 
         const hudInvestmentOfferValue = doc.getElementById('hud-investment-offer');
         if (hudInvestmentOfferValue === null) {
@@ -585,7 +585,7 @@ export async function main(nsContext: NS): Promise<void> {
           investmentOffer.round >= 1 && investmentOffer.round <= 4 && investmentOffer.funds > 0;
         setHudRowVisibility('hud-investment-offer-label', 'hud-investment-offer-row', hasRemainingInvestmentOffers);
         if (hasRemainingInvestmentOffers) {
-          hudInvestmentOfferValue.innerText = ns.formatNumber(investmentOffer.funds);
+          hudInvestmentOfferValue.innerText = ns.format.number(investmentOffer.funds);
         }
 
         let isDaemonRunning = false;

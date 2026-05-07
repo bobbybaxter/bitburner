@@ -226,7 +226,7 @@ export async function main(ns: NS): Promise<void> {
     if (shouldBuyNode) {
       try {
         hacknet.purchaseNode();
-        ns.print(`HackNet node purchased for $${ns.formatNumber(purchaseNodeCost)}`);
+        ns.print(`HackNet node purchased for $${ns.format.number(purchaseNodeCost)}`);
         wasItemPurchased = true;
       } catch {
         // Purchase failed, will retry next iteration
@@ -236,7 +236,7 @@ export async function main(ns: NS): Promise<void> {
       const success = performUpgrade(hacknet, bestUpgrade.nodeIndex, bestUpgrade.type, levelAmt);
       if (success) {
         const levelLabel = bestUpgrade.type === 'level' ? `level +${levelAmt}` : bestUpgrade.type;
-        ns.print(`${localISOString()} Upgrading HackNet ${levelLabel} for $${ns.formatNumber(upgradeCost)}`);
+        ns.print(`${localISOString()} Upgrading HackNet ${levelLabel} for $${ns.format.number(upgradeCost)}`);
         wasItemPurchased = true;
       }
     } else {
@@ -251,18 +251,18 @@ export async function main(ns: NS): Promise<void> {
           (bestUpgrade.type === null ||
             (useROI ? getNewNodeROI(ns, purchaseNodeCost) >= bestUpgrade.roi : purchaseNodeCost <= upgradeCost));
         if (nextIsNewNode) {
-          ns.print(`Next planned: new node for $${ns.formatNumber(purchaseNodeCost)}`);
+          ns.print(`Next planned: new node for $${ns.format.number(purchaseNodeCost)}`);
         } else if (bestUpgrade.type !== null && bestUpgrade.nodeIndex !== null) {
           const nextLevelLabel =
             bestUpgrade.type === 'level' ? `level +${bestUpgrade.levelAmount ?? numLevels}` : bestUpgrade.type;
           ns.print(
-            `Next planned: node ${bestUpgrade.nodeIndex} ${nextLevelLabel} upgrade for $${ns.formatNumber(upgradeCost)}`,
+            `Next planned: node ${bestUpgrade.nodeIndex} ${nextLevelLabel} upgrade for $${ns.format.number(upgradeCost)}`,
           );
         } else {
-          ns.print(`Next planned: new node for $${ns.formatNumber(purchaseNodeCost)}`);
+          ns.print(`Next planned: new node for $${ns.format.number(purchaseNodeCost)}`);
         }
         ns.print(
-          `  (spending budget: $${ns.formatNumber(spendingMax)}, earned $${ns.formatNumber(hacknetMoneyEarned)}, spent $${ns.formatNumber(spent)})`,
+          `  (spending budget: $${ns.format.number(spendingMax)}, earned $${ns.format.number(hacknetMoneyEarned)}, spent $${ns.format.number(spent)})`,
         );
       }
 

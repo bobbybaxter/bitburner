@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Before calling any `ns.*` method or using any Netscript type, look at the `NetscriptDefinitions.d.ts` in the root folder for the method/type to confirm the exact signature, return type, and any restrictions documented in the JSDoc.

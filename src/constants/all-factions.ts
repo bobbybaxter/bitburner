@@ -1,4 +1,6 @@
-export const ALL_FACTIONS = [
+import type { FactionName } from '@ns';
+
+export const ALL_FACTIONS: FactionName[] = [
   'CyberSec',
   'Tian Di Hui',
   'Netburners',
@@ -34,6 +36,10 @@ export const ALL_FACTIONS = [
   'Church of the Machine God',
 ];
 
-export const LOCATION_FACTION_GROUPS = [['Sector-12', 'Aevum'], ['Chongqing', 'Ishima', 'New Tokyo'], ['Volhaven']];
+export const LOCATION_FACTION_GROUPS: FactionName[][] = [
+  ['Sector-12', 'Aevum'],
+  ['Chongqing', 'Ishima', 'New Tokyo'],
+  ['Volhaven'],
+];
 
-export const ALL_LOCATION_FACTIONS = ['Sector-12', 'Aevum', 'Chongqing', 'Ishima', 'New Tokyo', 'Volhaven'];
+export const ALL_LOCATION_FACTIONS: FactionName[] = ['Sector-12', 'Aevum', 'Chongqing', 'Ishima', 'New Tokyo', 'Volhaven'];

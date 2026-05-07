@@ -457,7 +457,7 @@ function pickAutoInfiltrationLocation(ns: NS, faction: string, targetRep: number
     if (!bestLocal) {
       ns.tprint(
         `Cannot auto-pick a venue: best option "${bestGlobal.name}" is in ${bestGlobal.city}, but you have ` +
-          `${ns.formatNumber(player.money)} (< ${ns.formatNumber(MIN_MONEY_ASSUME_TRAVEL_OK)} for travel) and no ` +
+          `${ns.format.number(player.money)} (< ${ns.format.number(MIN_MONEY_ASSUME_TRAVEL_OK)} for travel) and no ` +
           `infiltratable locations in ${player.city}.`,
       );
       return null;
@@ -496,7 +496,7 @@ async function promptInteractiveGrindParams(ns: NS): Promise<{
   }
 
   const repTiers = [...new Set(rows.map((r) => r.repReq))].sort((a, b) => b - a);
-  const repLabels = repTiers.map((r) => `${formatNumberShort(r)} (${ns.formatNumber(r)})`);
+  const repLabels = repTiers.map((r) => `${formatNumberShort(r)} (${ns.format.number(r)})`);
   const repPick = await ns.prompt(`Select a reputation target`, {
     type: 'select',
     choices: repLabels,
@@ -652,11 +652,11 @@ async function grindInfiltrationLoop(
 
     if (mode === 'money') {
       ns.tprint(
-        `Run ${iteration}: money ${ns.formatNumber(beforeMoney)} → ${ns.formatNumber(afterMoney)} (target ${ns.formatNumber(valueNeeded)})`,
+        `Run ${iteration}: money ${ns.format.number(beforeMoney)} → ${ns.format.number(afterMoney)} (target ${ns.format.number(valueNeeded)})`,
       );
     } else {
       ns.tprint(
-        `Run ${iteration}: ${factionName} rep ${ns.formatNumber(beforeRep)} → ${ns.formatNumber(afterRep)} (target ${ns.formatNumber(valueNeeded)})`,
+        `Run ${iteration}: ${factionName} rep ${ns.format.number(beforeRep)} → ${ns.format.number(afterRep)} (target ${ns.format.number(valueNeeded)})`,
       );
     }
 
@@ -669,10 +669,10 @@ async function grindInfiltrationLoop(
   }
 
   if (mode === 'money') {
-    ns.tprint(`Done. Money is ${ns.formatNumber(ns.getPlayer().money)} (needed ≥ ${ns.formatNumber(valueNeeded)}).`);
+    ns.tprint(`Done. Money is ${ns.format.number(ns.getPlayer().money)} (needed ≥ ${ns.format.number(valueNeeded)}).`);
   } else {
     ns.tprint(
-      `Done. ${factionName} rep is ${ns.formatNumber(ns.singularity.getFactionRep(factionName))} (needed ≥ ${ns.formatNumber(valueNeeded)}).`,
+      `Done. ${factionName} rep is ${ns.format.number(ns.singularity.getFactionRep(factionName))} (needed ≥ ${ns.format.number(valueNeeded)}).`,
     );
   }
 }
@@ -727,7 +727,7 @@ export async function main(ns: NS): Promise<void> {
   }
 
   ns.tprint(
-    `Grinding infiltration at ${resolved.location} (${resolved.city}) — ${mode === 'money' ? 'money' : `rep for ${factionName}`} ≥ ${ns.formatNumber(valueNeeded)}`,
+    `Grinding infiltration at ${resolved.location} (${resolved.city}) — ${mode === 'money' ? 'money' : `rep for ${factionName}`} ≥ ${ns.format.number(valueNeeded)}`,
   );
 
   await grindInfiltrationLoop(ns, resolved, mode, factionName, valueNeeded, debugFaction);

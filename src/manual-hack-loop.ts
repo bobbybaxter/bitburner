@@ -53,6 +53,6 @@ export async function main(ns: NS): Promise<void> {
     const target = pickBestScoredHackTarget(ns, hostnames);
     singularityEnsureOnTarget(ns, target);
     const moneyStolen = await ns.singularity.manualHack();
-    ns.tprint(`${ns.formatNumber(moneyStolen)} stolen from ${target}`);
+    ns.tprint(`${ns.format.number(moneyStolen)} stolen from ${target}`);
   }
 }

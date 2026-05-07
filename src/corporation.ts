@@ -459,7 +459,7 @@ async function round1(option?: Round1Option): Promise<void> {
         >
       ).lastCycleRevenue;
       if (agricultureRev > 0) {
-        ns.print(`Revenue restored: ${ns.formatNumber(agricultureRev)}/cycle. Stopping boost material sell-off.`);
+        ns.print(`Revenue restored: ${ns.format.number(agricultureRev)}/cycle. Stopping boost material sell-off.`);
       } else {
         ns.print('WARNING: Still no revenue after clearing boost materials. Proceeding anyway.');
       }
@@ -476,12 +476,12 @@ async function round1(option?: Round1Option): Promise<void> {
     }
 
     const expectedOffer = config.selfFund ? 490e9 : 20e9;
-    ns.print(`Waiting for Round 1 investment offer (target: ${ns.formatNumber(expectedOffer)})...`);
+    ns.print(`Waiting for Round 1 investment offer (target: ${ns.format.number(expectedOffer)})...`);
     await waitForOffer(ns, 10, 10, expectedOffer);
     const offer1 = (await Do(ns, 'ns.corporation.getInvestmentOffer')) as ReturnType<
       NS['corporation']['getInvestmentOffer']
     >;
-    ns.print(`Round 1: Accept offer: ${ns.formatNumber(offer1.funds)}`);
+    ns.print(`Round 1: Accept offer: ${ns.format.number(offer1.funds)}`);
     await corporationEventLogger.generateOfferAcceptanceEvent(ns);
     await Do(ns, 'ns.corporation.acceptInvestmentOffer');
     await round2();
@@ -509,12 +509,12 @@ async function round2(option?: Round2Option): Promise<void> {
       ).lastCycleRevenue;
       if (agricultureRev <= 0) {
         ns.print(
-          `WARNING: Funds ${ns.formatNumber(corpFunds)} and no Agriculture revenue. Round 2 setup will likely fail.`,
+          `WARNING: Funds ${ns.format.number(corpFunds)} and no Agriculture revenue. Round 2 setup will likely fail.`,
         );
       } else {
         ns.print(
-          `Seed money: funds ${ns.formatNumber(corpFunds)}, revenue ${ns.formatNumber(agricultureRev)}/cycle. ` +
-            `Waiting for funds to reach ${ns.formatNumber(minFundsForRound2)}...`,
+          `Seed money: funds ${ns.format.number(corpFunds)}, revenue ${ns.format.number(agricultureRev)}/cycle. ` +
+            `Waiting for funds to reach ${ns.format.number(minFundsForRound2)}...`,
         );
         const maxWaitCycles = 500;
         let waited = 0;
@@ -528,7 +528,7 @@ async function round2(option?: Round2Option): Promise<void> {
           ).funds;
           if (waited % 50 === 0) {
             ns.print(
-              `Funds: ${ns.formatNumber(corpFunds)} (need ${ns.formatNumber(minFundsForRound2)}, ${waited}/${maxWaitCycles} cycles)`,
+              `Funds: ${ns.format.number(corpFunds)} (need ${ns.format.number(minFundsForRound2)}, ${waited}/${maxWaitCycles} cycles)`,
             );
           }
           if (corpFunds <= prev) {
@@ -542,7 +542,7 @@ async function round2(option?: Round2Option): Promise<void> {
           }
         }
         if (corpFunds >= minFundsForRound2) {
-          ns.print(`Funds reached ${ns.formatNumber(corpFunds)}. Proceeding with round 2.`);
+          ns.print(`Funds reached ${ns.format.number(corpFunds)}. Proceeding with round 2.`);
         }
       }
     }
@@ -731,12 +731,12 @@ async function round2(option?: Round2Option): Promise<void> {
 
   if (config.auto === true) {
     const expectedOffer = config.selfFund ? 11e12 : 200e9;
-    ns.print(`Waiting for Round 2 investment offer (target: ${ns.formatNumber(expectedOffer)})...`);
+    ns.print(`Waiting for Round 2 investment offer (target: ${ns.format.number(expectedOffer)})...`);
     await waitForOffer(ns, 15, 10, expectedOffer);
     const offer2 = (await Do(ns, 'ns.corporation.getInvestmentOffer')) as ReturnType<
       NS['corporation']['getInvestmentOffer']
     >;
-    ns.print(`Round 2: Accept offer: ${ns.formatNumber(offer2.funds)}`);
+    ns.print(`Round 2: Accept offer: ${ns.format.number(offer2.funds)}`);
     await corporationEventLogger.generateOfferAcceptanceEvent(ns);
     await Do(ns, 'ns.corporation.acceptInvestmentOffer');
     await round3();
@@ -883,7 +883,7 @@ async function round3(option: Round3Option = PrecalculatedRound3Option.OPTION1):
   await developNewProduct(ns, productDivisionName, mainProductDevelopmentCity, 1e9);
   await corporationEventLogger.generateNewProductEvent(ns, productDivisionName);
 
-  ns.print(`Improving Agriculture support division (budget: ${ns.formatNumber(agricultureDivisionBudget)})...`);
+  ns.print(`Improving Agriculture support division (budget: ${ns.format.number(agricultureDivisionBudget)})...`);
   await improveSupportDivision(
     DivisionName.AGRICULTURE,
     agricultureDivisionBudget,
@@ -892,7 +892,7 @@ async function round3(option: Round3Option = PrecalculatedRound3Option.OPTION1):
     false,
   );
 
-  ns.print(`Improving Chemical support division (budget: ${ns.formatNumber(chemicalDivisionBudget)})...`);
+  ns.print(`Improving Chemical support division (budget: ${ns.format.number(chemicalDivisionBudget)})...`);
   await improveSupportDivision(
     DivisionName.CHEMICAL,
     chemicalDivisionBudget,
@@ -972,14 +972,14 @@ async function improveAllDivisions(): Promise<void> {
 
   let reservedFunds = 0;
   const increaseReservedFunds = (amount: number) => {
-    console.log(`Increase reservedFunds by ${ns.formatNumber(amount)}`);
+    console.log(`Increase reservedFunds by ${ns.format.number(amount)}`);
     reservedFunds += amount;
-    console.log(`New reservedFunds: ${ns.formatNumber(reservedFunds)}`);
+    console.log(`New reservedFunds: ${ns.format.number(reservedFunds)}`);
   };
   const decreaseReservedFunds = (amount: number) => {
-    console.log(`Decrease reservedFunds by ${ns.formatNumber(amount)}`);
+    console.log(`Decrease reservedFunds by ${ns.format.number(amount)}`);
     reservedFunds -= amount;
-    console.log(`New reservedFunds: ${ns.formatNumber(reservedFunds)}`);
+    console.log(`New reservedFunds: ${ns.format.number(reservedFunds)}`);
   };
 
   const parseBudgetFromProductName = (productName: string): number | null => {
@@ -1058,8 +1058,8 @@ async function improveAllDivisions(): Promise<void> {
     const profit = await getProfit(ns);
     const corpLoop = (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>;
     const cycleStatus =
-      `Cycle ${cycleCount} | Round ${currentRound} | Funds: ${ns.formatNumber(corpLoop.funds)} | Profit: ${ns.formatNumber(profit)}/s` +
-      (currentRound <= 4 ? ` | Offer: ${ns.formatNumber(investmentOfferLoop.funds)}` : '');
+      `Cycle ${cycleCount} | Round ${currentRound} | Funds: ${ns.format.number(corpLoop.funds)} | Profit: ${ns.format.number(profit)}/s` +
+      (currentRound <= 4 ? ` | Offer: ${ns.format.number(investmentOfferLoop.funds)}` : '');
     ns.print(cycleStatus);
     console.log(cycleStatus);
     const productIsDeveloping = await hasDevelopingProduct(primaryProductDivisionName);
@@ -1219,7 +1219,7 @@ async function improveAllDivisions(): Promise<void> {
           } else {
             ns.print(
               `Deferring product creation while saving funds: ` +
-                `${ns.formatNumber(fundsForProductAttempt)} / ${ns.formatNumber(productDevelopmentBudget)}.`,
+                `${ns.format.number(fundsForProductAttempt)} / ${ns.format.number(productDevelopmentBudget)}.`,
             );
           }
 
@@ -1245,14 +1245,16 @@ async function improveAllDivisions(): Promise<void> {
           } else if (currentRound === 4) {
             expectedOffer = config.selfFund ? 1e20 : 1e18;
           }
-          ns.print(`Waiting for Round ${currentRound} investment offer (target: ${ns.formatNumber(expectedOffer)})...`);
+          ns.print(
+            `Waiting for Round ${currentRound} investment offer (target: ${ns.format.number(expectedOffer)})...`,
+          );
           const currentCycle = corporationEventLogger.cycle;
           await waitForOffer(ns, 10, 5, expectedOffer);
           cycleCount += corporationEventLogger.cycle - currentCycle;
           const offerAccept = (await Do(ns, 'ns.corporation.getInvestmentOffer')) as ReturnType<
             NS['corporation']['getInvestmentOffer']
           >;
-          console.log(`Cycle: ${cycleCount}. ` + `Accept offer: ${ns.formatNumber(offerAccept.funds)}`);
+          console.log(`Cycle: ${cycleCount}. ` + `Accept offer: ${ns.format.number(offerAccept.funds)}`);
           await corporationEventLogger.generateOfferAcceptanceEvent(ns);
           await Do(ns, 'ns.corporation.acceptInvestmentOffer');
           preparingToAcceptOffer = false;
@@ -1290,7 +1292,7 @@ async function improveAllDivisions(): Promise<void> {
       } else {
         ns.print(
           `Deferring product creation while saving funds: ` +
-            `${ns.formatNumber(fundsForProductAttempt)} / ${ns.formatNumber(productDevelopmentBudget)}.`,
+            `${ns.format.number(fundsForProductAttempt)} / ${ns.format.number(productDevelopmentBudget)}.`,
         );
       }
     } else {
@@ -1328,15 +1330,15 @@ async function improveAllDivisions(): Promise<void> {
     if (isSavingForNextProduct) {
       const budgetForNextProject = totalFunds * saveModeProductReserveRatio;
       ns.print(
-        `Saving funds for next product: ${ns.formatNumber(corpLoop.funds)} / ` +
-          `${ns.formatNumber(requiredProductDevelopmentBudget)}.`,
+        `Saving funds for next product: ${ns.format.number(corpLoop.funds)} / ` +
+          `${ns.format.number(requiredProductDevelopmentBudget)}.`,
       );
       ns.print(
-        `Save-mode: ~${saveModeProductReserveRatio * 100}% toward next product (${ns.formatNumber(budgetForNextProject)}), ` +
-          `${saveModeDivisionSpendRatio * 100}% for divisions (${ns.formatNumber(availableFunds)}, ` +
+        `Save-mode: ~${saveModeProductReserveRatio * 100}% toward next product (${ns.format.number(budgetForNextProject)}), ` +
+          `${saveModeDivisionSpendRatio * 100}% for divisions (${ns.format.number(availableFunds)}, ` +
           `${saveModePerDivisionSpendRatio * 100}% each). ` +
-          `Diagnostics: currentFunds=${ns.formatNumber(corpAfterSpending.funds)}, ` +
-          `reservedFunds=${ns.formatNumber(reservedFunds)}, spendable=${ns.formatNumber(totalFunds)}.`,
+          `Diagnostics: currentFunds=${ns.format.number(corpAfterSpending.funds)}, ` +
+          `reservedFunds=${ns.format.number(reservedFunds)}, spendable=${ns.format.number(totalFunds)}.`,
       );
     }
     const budgetForTobaccoDivision = isSavingForNextProduct
@@ -1354,8 +1356,8 @@ async function improveAllDivisions(): Promise<void> {
         const nonOfficesBudget = budgetForTobaccoDivision * (1 - budgetRatioForProductDivision.office);
         increaseReservedFunds(nonOfficesBudget);
         pendingImprovingProductDivisions1.set(primaryProductDivisionName, nonOfficesBudget);
-        ns.print(`Upgrading ${primaryProductDivisionName} upgrades (budget: ${ns.formatNumber(nonOfficesBudget)})...`);
-        console.log(`Upgrade ${primaryProductDivisionName}-1, budget: ${ns.formatNumber(nonOfficesBudget)}`);
+        ns.print(`Upgrading ${primaryProductDivisionName} upgrades (budget: ${ns.format.number(nonOfficesBudget)})...`);
+        console.log(`Upgrade ${primaryProductDivisionName}-1, budget: ${ns.format.number(nonOfficesBudget)}`);
         console.time(primaryProductDivisionName + '-1');
         improveProductDivision(primaryProductDivisionName, budgetForTobaccoDivision, true, false, false)
           .catch((reason) => {
@@ -1374,8 +1376,8 @@ async function improveAllDivisions(): Promise<void> {
         const officesBudget = budgetForTobaccoDivision * budgetRatioForProductDivision.office;
         increaseReservedFunds(officesBudget);
         pendingImprovingProductDivisions2.set(primaryProductDivisionName, officesBudget);
-        ns.print(`Upgrading ${primaryProductDivisionName} offices (budget: ${ns.formatNumber(officesBudget)})...`);
-        console.log(`Upgrade ${primaryProductDivisionName}-2, budget: ${ns.formatNumber(officesBudget)}`);
+        ns.print(`Upgrading ${primaryProductDivisionName} offices (budget: ${ns.format.number(officesBudget)})...`);
+        console.log(`Upgrade ${primaryProductDivisionName}-2, budget: ${ns.format.number(officesBudget)}`);
         console.time(primaryProductDivisionName + '-2');
         improveProductDivisionOffices(primaryProductDivisionName, tobaccoIndustryData, officesBudget, false, false)
           .catch((reason) => {
@@ -1393,8 +1395,8 @@ async function improveAllDivisions(): Promise<void> {
       availableFunds -= budget;
       increaseReservedFunds(budget);
       pendingImprovingSupportDivisions.set(divisionName, budget);
-      ns.print(`Upgrading support division ${divisionName} (budget: ${ns.formatNumber(budget)})...`);
-      console.log(`Upgrade ${divisionName}, budget: ${ns.formatNumber(budget)}`);
+      ns.print(`Upgrading support division ${divisionName} (budget: ${ns.format.number(budget)})...`);
+      console.log(`Upgrade ${divisionName}, budget: ${ns.format.number(budget)}`);
       console.time(divisionName);
       improveSupportDivision(divisionName, budget, defaultBudgetRatioForSupportDivision, false, false)
         .catch((reason) => {
@@ -1481,7 +1483,7 @@ async function needToUpgradeDivision(divisionName: string, budget: number): Prom
   const needToUpgrade = maxOfficeSize >= office.size + expectedUpgradeSize;
   if (needToUpgrade) {
     console.debug(
-      `needToUpgrade ${divisionName}, budget: ${ns.formatNumber(budget)}, office.size: ${office.size}, ` +
+      `needToUpgrade ${divisionName}, budget: ${ns.format.number(budget)}, office.size: ${office.size}, ` +
         `maxOfficeSize: ${maxOfficeSize}}`,
     );
   }
@@ -1505,7 +1507,7 @@ async function ensureOfficeBudgetForMinimumSize(
 
   ns.print(
     `Office budget below minimum for ${divisionName}/${city}. ` +
-      `Need ${ns.formatNumber(minimumRequiredBudget)}, have ${ns.formatNumber(officeBudget)}. Waiting for funds...`,
+      `Need ${ns.format.number(minimumRequiredBudget)}, have ${ns.format.number(officeBudget)}. Waiting for funds...`,
   );
   const maxWaitCycles = 20;
   let waited = 0;
@@ -1519,7 +1521,7 @@ async function ensureOfficeBudgetForMinimumSize(
     if (waited % 50 === 0) {
       ns.print(
         `Waiting office bootstrap funds for ${divisionName}/${city}: ` +
-          `${ns.formatNumber(funds)} / ${ns.formatNumber(minimumRequiredBudget)} (${waited}/${maxWaitCycles} cycles)`,
+          `${ns.format.number(funds)} / ${ns.format.number(minimumRequiredBudget)} (${waited}/${maxWaitCycles} cycles)`,
       );
     }
     await waitForNumberOfCycles(ns, 10);
@@ -1540,7 +1542,7 @@ async function ensureOfficeBudgetForMinimumSize(
   if (effectiveBudget > officeBudget) {
     ns.print(
       `Temporarily increasing office budget for ${divisionName}/${city}: ` +
-        `${ns.formatNumber(officeBudget)} -> ${ns.formatNumber(effectiveBudget)}`,
+        `${ns.format.number(officeBudget)} -> ${ns.format.number(effectiveBudget)}`,
     );
   }
   return effectiveBudget;
@@ -1775,7 +1777,7 @@ async function improveSecondaryProductDivision(
   const secFundsAfter = (
     (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>
   ).funds;
-  logger.log(`Spent: ${ns.formatNumber(currentFunds - secFundsAfter)}`);
+  logger.log(`Spent: ${ns.format.number(currentFunds - secFundsAfter)}`);
 }
 
 /**
@@ -1846,7 +1848,7 @@ async function improveSupportDivision(
   if (maxOfficeSize < 6) {
     ns.print(
       `WARNING: Budget for office is too low. Skipping main office upgrade. ` +
-        `Division: ${divisionName}. Office budget: ${ns.formatNumber(officeBudget)}`,
+        `Division: ${divisionName}. Office budget: ${ns.format.number(officeBudget)}`,
     );
     return;
   }
@@ -1941,7 +1943,7 @@ async function improveSupportDivision(
   const supFundsAfter = (
     (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>
   ).funds;
-  logger.log(`Spent: ${ns.formatNumber(currentFunds - supFundsAfter)}`);
+  logger.log(`Spent: ${ns.format.number(currentFunds - supFundsAfter)}`);
 }
 
 async function improveProductDivisionRawProduction(
@@ -2205,8 +2207,8 @@ async function improveProductDivisionSupportOffices(
   if (budget > supFunds.funds) {
     // Bypass usage of logger. If this happens, there is race condition. We must be notified about it.
     console.warn(
-      `Budget is higher than current funds. Budget: ${ns.formatNumber(budget)}, ` +
-        `funds: ${ns.formatNumber(supFunds.funds)}`,
+      `Budget is higher than current funds. Budget: ${ns.format.number(budget)}, ` +
+        `funds: ${ns.format.number(supFunds.funds)}`,
     );
     budget = supFunds.funds * 0.9;
   }
@@ -2226,7 +2228,7 @@ async function improveProductDivisionSupportOffices(
     if (maxOfficeSize < 5) {
       ns.print(
         `WARNING: Budget for office is too low. Skipping support office upgrade. ` +
-          `Division: ${divisionName}, city: ${city}. Office budget: ${ns.formatNumber(budgetForEachOffice)}`,
+          `Division: ${divisionName}, city: ${city}. Office budget: ${ns.format.number(budgetForEachOffice)}`,
       );
       continue;
     }
@@ -2447,7 +2449,7 @@ async function improveProductDivision(
   const impFundsAfter = (
     (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>
   ).funds;
-  logger.log(`Spent: ${ns.formatNumber(currentFunds - impFundsAfter)}`);
+  logger.log(`Spent: ${ns.format.number(currentFunds - impFundsAfter)}`);
 }
 
 function resetStatistics() {

@@ -20,7 +20,7 @@ export async function main(ns: NS): Promise<void> {
   //   let best: number | null = null;
   //   for (const ram of ramTiers(cap)) {
   //     const cost = ns.getPurchasedServerCost(ram);
-  //     ns.tprint(`Cost of ${ram}GB: ${ns.formatNumber(cost)}`);
+  //     ns.tprint(`Cost of ${ram}GB: ${ns.format.number(cost)}`);
   //     if (!Number.isFinite(cost) || cost <= 0) continue;
   //     if (canAfford(cash, threshold, cost)) best = ram;
   //   }

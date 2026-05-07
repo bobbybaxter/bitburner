@@ -13,7 +13,7 @@ export function hyperdriveBulkBuyer(ns: NS) {
       addLog(
         ns,
         'skill',
-        `Got ${ns.formatNumber(count, 2, 2)} ${skill}${count >= 2 ? 's' : ''} for ${ns.formatNumber(ns.bladeburner.getSkillUpgradeCost(skill, count), 2, 2)} sp`,
+        `Got ${ns.format.number(count, 2, 2)} ${skill}${count >= 2 ? 's' : ''} for ${ns.format.number(ns.bladeburner.getSkillUpgradeCost(skill, count), 2, 2)} sp`,
       );
     }
 }

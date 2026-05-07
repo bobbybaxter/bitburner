@@ -86,8 +86,8 @@ export async function main(nsContext: NS): Promise<void> {
         if (saveModeDiagnosticsCounter % 20 === 0) {
           const corp = ns.corporation.getCorporation();
           ns.print(
-            `Daemon save mode active. Funds: ${ns.formatNumber(corp.funds)}, ` +
-              `profit: ${ns.formatNumber(corp.revenue - corp.expenses)}/s`,
+            `Daemon save mode active. Funds: ${ns.format.number(corp.funds)}, ` +
+              `profit: ${ns.format.number(corp.revenue - corp.expenses)}/s`,
           );
         }
       }

@@ -116,7 +116,7 @@ export async function main(ns: NS) {
       if (!executeCandidate(candidate)) break;
       upgradesThisCycle++;
       const target = candidate.nodeIndex === null ? 'new' : `#${candidate.nodeIndex}`;
-      lastUpgradeSummary = `${candidate.type} ${target} | ROI: ${ns.formatNumber(candidate.roi)} | cost: $${ns.formatNumber(candidate.cost)}`;
+      lastUpgradeSummary = `${candidate.type} ${target} | ROI: ${ns.format.number(candidate.roi)} | cost: $${ns.format.number(candidate.cost)}`;
     }
 
     serversInfo.length = 0;
@@ -137,7 +137,7 @@ export async function main(ns: NS) {
 
     const totalProd = Array.from({ length: h.numNodes() }, (_, i) => getNodeProduction(i)).reduce((a, b) => a + b, 0);
     ns.print(`Active servers: ${h.numNodes()}/${serverCap}`);
-    ns.print(`Hash production: ${ns.formatNumber(totalProd)} h/s`);
+    ns.print(`Hash production: ${ns.format.number(totalProd)} h/s`);
     ns.print(`Upgrades this cycle: ${upgradesThisCycle}`);
     ns.print(`Last upgrade: ${lastUpgradeSummary}`);
     for (const server of serversInfo) {
