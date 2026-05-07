@@ -12,18 +12,27 @@ For employers: this project demonstrates scripting automation, algorithmic decis
 
 ```bash
 npm install
+npm run dev
+```
+
+`npm run dev` runs [`viteburner`](https://github.com/Tanimodori/viteburner), which transpiles TypeScript with Vite and pushes scripts straight to the running Bitburner game over the Remote API WebSocket — no separate `dist/` step required. See `vite.config.ts` for the watch globs and the import resolver that lets TypeScript-style `.js` specifiers (e.g. `import { foo } from 'helpers/foo.js'`) resolve to their `.ts` sources.
+
+### Legacy watch (filesync) workflow
+
+The older `bitburner-filesync` flow is still wired up if you prefer it (or want to inspect the compiled output in `dist/`):
+
+```bash
 npm run watch
 ```
 
-Output goes to `dist/`. The watch command runs TypeScript compilation plus `bitburner-filesync` (see `filesync.json`).
+This runs `tsc -w`, a local file mirror, and `bitburner-filesync` concurrently. Config lives in `filesync.json`.
 
 ### Connecting to the game
 
-1. Install the **Bitburner Connector** extension (VS Code/Cursor).
-2. In Bitburner: **Options → Remote API** — set hostname to `localhost` and port to `12525`.
-3. Start `npm run watch`, then click **Connect** in the game.
+1. In Bitburner: **Options → Remote API** — set hostname to `localhost` and port to `12525` (matches `filesync.json` and the viteburner default).
+2. Start `npm run dev` (or `npm run watch`), then click **Connect** in the game.
 
-Scripts in `dist/` sync to the game automatically.
+Scripts sync to the game automatically.
 
 ## Running Scripts
 

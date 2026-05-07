@@ -1,6 +1,6 @@
 import { normalizeProfit } from './normalize-profit';
 import { normalizeProgress } from './normalize-progress';
-import {
+import type {
   BenchmarkType,
   ComparatorCustomData,
   OfficeBenchmarkData,

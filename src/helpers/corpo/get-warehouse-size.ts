@@ -1,6 +1,6 @@
 import { CorpUpgradeName, CorpUpgradesData } from '/constants/corp';
 import { getResearchStorageMultiplier } from './get-research-multiplier';
-import { DivisionResearches } from './types';
+import type { DivisionResearches } from './types';
 
 export function getWarehouseSize(
   smartStorageLevel: number,
