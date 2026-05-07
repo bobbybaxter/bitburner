@@ -145,22 +145,33 @@ run scan.js
 
 ## share-server.ts
 
-**What it does:** Deploys `helpers/share-loop.js` to a server and runs it with max available threads. The share loop contributes that server's CPU to your current faction (or gang) to earn reputation when idle. Requires a purchased server dedicated to sharing (e.g. `cloud-share`).
+**What it does:** Deploys `helpers/share-loop.js` to one or more servers and runs it with max available threads on each. The share loop contributes that server's CPU to your current faction (or gang) to earn reputation when idle. The dedicated `cloud-share` server is *always* included, plus any extra hostnames you pass as arguments. Requires `helpers/share-loop.js` to exist.
 
 **How to run:**
 
 ```bash
-run share-server.js                # use default server cloud-share
-run share-server.js cloud-share-1   # specify a different server
+run share-server.js                          # share on cloud-share
+run share-server.js home                     # share on home + cloud-share
+run share-server.js home pserv-1 pserv-2     # share on all listed + cloud-share
 ```
 
-- **Arg 1 (optional):** Server hostname to share from (default: `cloud-share`). Requires `helpers/share-loop.js` to exist.
+- **Args (optional):** Any number of hostnames to share from. `cloud-share` is always added automatically.
 
 ---
 
 ## startup.ts
 
-**What it does:** Launches the main automation stack on home: `open-all-ports`, infiltrate, stockmaster, hacknet-opt (1 level, 100% budget), and cloud-opt. One-shot launcher—does not keep running.
+**What it does:** Bootstraps the full automation stack on home, gated by what your current BitNode / SourceFiles allow. Always starts `open-all-ports`, `infiltrate`, `stockmaster`, `hacknet-opt` (1 level, 100% budget), and `home-opt`. If purchased servers are enabled, also launches `cloud-opt`.
+
+Conditional on BitNode/SourceFiles:
+
+- **SF2** — runs `gangs.js`.
+- **SF3** — runs `corporation.js` with a stage-appropriate flag (`--round1 --auto`, `--round2 --benchmark`, `--round3 --benchmark`, or `--improveAllDivisions --benchmark`) plus `daemon.js --maintainCorporation`. Also runs `workaround.js --hud`.
+- **SF4** — once available, grinds MegaCorp infiltration via `grind-infil.js` until you have ≥ $1B, then starts `backdoor.js`, `augs.js`, and `hack3.js`. Buys the TOR router and every dark-web program as funds allow.
+- **SF6 / SF7** — runs `bladeburner.js`.
+- **SF9** — runs `setup-hashnet.js` and `hash-servers.js` (and kills `hacknet-opt.js`).
+
+Requires ~25 GB RAM on home. Starts everything and exits (does not keep running).
 
 **How to run:**
 
