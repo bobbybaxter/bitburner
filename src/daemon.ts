@@ -19,6 +19,7 @@ import {
   waitForNumberOfCycles,
   waitUntilAfterStateHappens,
 } from './helpers/corpo/corporation-utils';
+import { Do } from './helpers/do';
 
 export function autocomplete(data: AutocompleteData, _flags: string[]): string[] {
   return parseAutoCompleteDataFromDefaultConfig(data, defaultConfig);
@@ -98,7 +99,7 @@ export async function main(nsContext: NS): Promise<void> {
           if (!division.makesProducts) {
             return;
           }
-          const industryData = ns.corporation.getIndustryData(division.type);
+          const industryData = ns.corporation.getIndustryData(division.industry);
           const office = ns.corporation.getOffice(divisionName, city);
           for (const productName of division.products) {
             const product = ns.corporation.getProduct(divisionName, city, productName);
@@ -131,13 +132,15 @@ export async function main(nsContext: NS): Promise<void> {
       await setOptimalSellingPriceForEverything(ns);
 
       if (ns.corporation.getCorporation().prevState === CorpState.START) {
-        await loopAllDivisionsAndCities(ns, (divisionName, city) => {
+        await loopAllDivisionsAndCities(ns, async (divisionName, city) => {
           const office = ns.corporation.getOffice(divisionName, city);
           // Check for Unassigned employees
           const unassignedEmployees = office.employeeJobs.Unassigned;
           if (unassignedEmployees > 0) {
             const rndCount = office.employeeJobs['Research & Development'];
-            const ok = ns.corporation.setAutoJobAssignment(
+            const ok = await Do(
+              ns,
+              'ns.corporation.setJobAssignment',
               divisionName,
               city,
               EmployeePosition.RESEARCH_DEVELOPMENT,

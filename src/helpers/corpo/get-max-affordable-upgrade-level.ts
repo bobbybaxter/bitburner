@@ -1,5 +1,5 @@
 import { CorpUpgradeName } from '@ns';
-import { CorpUpgradesData } from '../../constants/corp-upgrades-data';
+import { CorpUpgradesData } from '/constants/corp';
 import { getGenericMaxAffordableUpgradeLevel } from './get-generic-max-affordable-upgrade-level';
 
 export function getMaxAffordableUpgradeLevel(upgradeName: CorpUpgradeName, fromLevel: number, maxCost: number): number {

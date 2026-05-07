@@ -1893,7 +1893,7 @@ async function improveSupportDivision(
     const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
       NS['corporation']['getDivision']
     >;
-    const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+    const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
     const dataArray = await optimizeOffice(
       nsx,
       division,
@@ -2156,6 +2156,7 @@ async function improveProductDivisionMainOffice(
             0.01) /
           2,
         size: 0.05,
+        productionLimit: null,
       };
     } else {
       item = bestProduct;
@@ -2324,7 +2325,7 @@ async function improveProductDivision(
   const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
     NS['corporation']['getDivision']
   >;
-  const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+  const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
   const divisionResearches = await getDivisionResearches(ns, divisionName);
   const benchmark = new CorporationOptimizer();
   const currentFunds = (

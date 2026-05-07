@@ -534,7 +534,7 @@ export async function assignJobs(ns: NS, divisionName: string, officeSetups: Off
         if (jobName === EmployeePosition.UNASSIGNED) {
           continue;
         }
-        await Do(ns, 'ns.corporation.setAutoJobAssignment', divisionName, officeSetup.city, jobName, 0);
+        await Do(ns, 'ns.corporation.setJobAssignment', divisionName, officeSetup.city, jobName, 0);
       }
 
       const office = (await Do(ns, 'ns.corporation.getOffice', divisionName, officeSetup.city)) as ReturnType<
@@ -569,7 +569,7 @@ export async function assignJobs(ns: NS, divisionName: string, officeSetups: Off
         if (
           !((await Do(
             ns,
-            'ns.corporation.setAutoJobAssignment',
+            'ns.corporation.setJobAssignment',
             divisionName,
             officeSetup.city,
             jobName,
@@ -639,7 +639,7 @@ export async function clearPurchaseOrders(ns: NS, clearInputMaterialOrders: bool
       const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
         NS['corporation']['getDivision']
       >;
-      const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+      const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
       for (const materialName of getRecordKeys(
         industrialData.requiredMaterials as PartialRecord<CorpMaterialName, string>,
       )) {
@@ -746,7 +746,7 @@ export async function getCorporationUpgradeLevels(ns: NS): Promise<CorporationUp
   const corporationUpgradeLevels: CorporationUpgradeLevels = {
     [UpgradeName.SMART_FACTORIES]: 0,
     [UpgradeName.SMART_STORAGE]: 0,
-    [UpgradeName.DREAM_SENSE]: 0,
+    // [UpgradeName.DREAM_SENSE]: 0,
     [UpgradeName.WILSON_ANALYTICS]: 0,
     [UpgradeName.NUOPTIMAL_NOOTROPIC_INJECTOR_IMPLANTS]: 0,
     [UpgradeName.SPEECH_PROCESSOR_IMPLANTS]: 0,
@@ -799,7 +799,7 @@ export async function getIndustryData(ns: NS, divisionName: string): Promise<Cor
   const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
     NS['corporation']['getDivision']
   >;
-  return (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+  return (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
 }
 
 export async function createDivision(
@@ -1039,7 +1039,7 @@ export async function setSmartSupplyData(ns: NS): Promise<void> {
     if (!(await Do(ns, 'ns.corporation.hasWarehouse', division.name, city))) {
       return;
     }
-    const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+    const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
     const warehouse = (await Do(ns, 'ns.corporation.getWarehouse', division.name, city)) as ReturnType<
       NS['corporation']['getWarehouse']
     >;
@@ -1159,7 +1159,7 @@ export async function buyOptimalAmountOfInputMaterials(
     if (!(await Do(ns, 'ns.corporation.hasWarehouse', division.name, city))) {
       return;
     }
-    const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+    const industrialData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
     const office = (await Do(ns, 'ns.corporation.getOffice', division.name, city)) as ReturnType<
       NS['corporation']['getOffice']
     >;
@@ -1929,7 +1929,7 @@ export async function setOptimalSellingPriceForEverything(ns: NS): Promise<void>
     const division = (await Do(ns, 'ns.corporation.getDivision', divisionName)) as ReturnType<
       NS['corporation']['getDivision']
     >;
-    const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+    const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
     const products = division.products;
     const hasMarketTA2 = (await Do(
       ns,
@@ -1999,7 +1999,7 @@ export async function buyBoostMaterials(ns: NS, division: Division): Promise<voi
     ns.print(`WARN: Skipping boost materials purchase — funds too low (${ns.format.number(funds)})`);
     return;
   }
-  const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.type)) as CorpIndustryData;
+  const industryData = (await Do(ns, 'ns.corporation.getIndustryData', division.industry)) as CorpIndustryData;
   let reservedSpaceRatio = 0.2;
   const ratio = 0.1;
   if (industryData.makesProducts) {
@@ -2025,9 +2025,9 @@ export async function buyBoostMaterials(ns: NS, division: Division): Promise<voi
       }
       let effectiveRatio = ratio;
       if (
-        (availableSpace / warehouse.size < 0.5 && division.type === IndustryType.AGRICULTURE) ||
+        (availableSpace / warehouse.size < 0.5 && division.industry === IndustryType.AGRICULTURE) ||
         (availableSpace / warehouse.size < 0.75 &&
-          (division.type === IndustryType.CHEMICAL || division.type === IndustryType.TOBACCO))
+          (division.industry === IndustryType.CHEMICAL || division.industry === IndustryType.TOBACCO))
       ) {
         effectiveRatio = 0.2;
       }
