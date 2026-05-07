@@ -29,7 +29,7 @@ export async function refresh(
   has4s: boolean,
   allStocks: StockPosition[],
   myStocks: StockPosition[],
-): Promise<number> {
+): Promise<{ holdings: number; ticked: boolean }> {
   let holdings = 0;
 
   const batchedData = await getBatchedStockData(ns, session, has4s);
@@ -37,6 +37,14 @@ export async function refresh(
 
   if (ticked) {
     if (Date.now() - session.lastTick < EXPECTED_TICK_TIME - SLEEP_INTERVAL) {
+      if (!has4s) {
+        const rapidCooldownTicks = Math.max(0, Number(session.options['pre-4s-post-rapid-tick-buy-cooldown'] ?? 0));
+        if (rapidCooldownTicks > 0)
+          session.rapidTickBuyCooldownRemaining = Math.max(
+            session.rapidTickBuyCooldownRemaining,
+            rapidCooldownTicks + 1,
+          );
+      }
       if (Date.now() - session.lastTick < CATCH_UP_TICK_TIME - SLEEP_INTERVAL) {
         const changedPrices = allStocks.filter((stk) => stk.ask_price != batchedData[stk.sym].ask);
         sessionLog(
@@ -93,7 +101,7 @@ export async function refresh(
           : 1 + stk.ticksHeld;
   }
   if (ticked) await updateForecast(ns, session, allStocks, has4s);
-  return holdings;
+  return { holdings, ticked };
 }
 
 export async function updateForecast(
@@ -151,6 +159,14 @@ export async function updateForecast(
           `Threshold for changing predicted market cycle met (${inversionsDetected.length} >= ${session.inversionAgreementThreshold}). ` +
             `Changing current market tick from ${session.detectedCycleTick} to ${newPredictedCycleTick}.`,
         );
+      if (!has4s) {
+        const reanchorCooldownTicks = Math.max(
+          0,
+          Number(session.options['pre-4s-post-reanchor-buy-cooldown'] ?? 0),
+        );
+        if (reanchorCooldownTicks > 0)
+          session.reanchorBuyCooldownRemaining = Math.max(session.reanchorBuyCooldownRemaining, reanchorCooldownTicks + 1);
+      }
       session.marketCycleDetected = true;
       session.detectedCycleTick = newPredictedCycleTick;
       session.inversionAgreementThreshold = Math.max(MAX_INVERSION_THRESHOLD_CAP, inversionsDetected.length);

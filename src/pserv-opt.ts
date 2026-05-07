@@ -2,132 +2,154 @@
 
 import { NS } from '@ns';
 
+const SHARE_NAME = 'pserv-share';
+const SHARE_SCRIPT = 'share-server.js';
+
 const formatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
 });
 
 const CONFIG = {
-  initialMulti: 7, // 3 = 8GB, 7 = 128GB, 11 = 2TB, 15 = 32TB, 19 = 512TB
-  moneyThreshold: 0.25, // only buy when cash >= cost / moneyThreshold
+  moneyThreshold: 0.25, // only act when cash >= cost / moneyThreshold
   sleepMs: 3000,
 };
 
+/** Valid purchased-server RAM sizes: 2, 4, 8, … up to game cap. */
+function ramTiers(maxRam: number): number[] {
+  const tiers: number[] = [];
+  for (let ram = 2; ram <= maxRam; ram *= 2) {
+    tiers.push(ram);
+  }
+  return tiers;
+}
+
+/** pserv-share, then pserv-1 … pserv-(limit-1). */
+function purchaseHostnameOrder(limit: number): string[] {
+  const names = [SHARE_NAME];
+  for (let i = 1; i < limit; i++) {
+    names.push(`pserv-${i}`);
+  }
+  return names;
+}
+
+function nextMissingHostname(limit: number, owned: readonly string[]): string | null {
+  for (const h of purchaseHostnameOrder(limit)) {
+    if (!owned.includes(h)) return h;
+  }
+  return null;
+}
+
+function canAfford(cash: number, threshold: number, cost: number): boolean {
+  return Number.isFinite(cost) && cost >= 0 && cash * threshold >= cost;
+}
+
+/** Largest RAM tier whose purchase price fits the money rule. */
+function bestPurchasableRam(ns: NS, cash: number, threshold: number): number | null {
+  const cap = ns.getPurchasedServerMaxRam();
+  let best: number | null = null;
+  for (const ram of ramTiers(cap)) {
+    const cost = ns.getPurchasedServerCost(ram);
+    if (!Number.isFinite(cost) || cost <= 0) continue;
+    if (canAfford(cash, threshold, cost)) best = ram;
+  }
+  return best;
+}
+
+/** Largest RAM tier above currentRam whose upgrade price fits the money rule. */
+function bestUpgradeForServer(
+  ns: NS,
+  hostname: string,
+  currentRam: number,
+  cash: number,
+  threshold: number,
+): { ram: number; cost: number } | null {
+  const cap = ns.getPurchasedServerMaxRam();
+  let best: { ram: number; cost: number } | null = null;
+  for (const ram of ramTiers(cap)) {
+    if (ram <= currentRam) continue;
+    const cost = ns.getPurchasedServerUpgradeCost(hostname, ram);
+    if (cost < 0 || !Number.isFinite(cost)) continue;
+    if (canAfford(cash, threshold, cost)) best = { ram, cost };
+  }
+  return best;
+}
+
+/** Prefer higher target RAM, then higher upgrade cost, then hostname (stable). */
+function isBetterUpgrade(
+  a: { hostname: string; ram: number; cost: number },
+  b: { hostname: string; ram: number; cost: number },
+): boolean {
+  if (a.ram !== b.ram) return a.ram > b.ram;
+  if (a.cost !== b.cost) return a.cost > b.cost;
+  return a.hostname < b.hostname;
+}
+
+function allPurchasedServersAtCap(ns: NS, owned: readonly string[], limit: number): boolean {
+  if (owned.length !== limit) return false;
+  const cap = ns.getPurchasedServerMaxRam();
+  return owned.every((h) => ns.getServerMaxRam(h) === cap);
+}
+
 /**
- * Optimizes purchased servers.
+ * Optimizes purchased servers: fills fixed hostnames in order, then upgrades the single
+ * best affordable tier jump each tick when at the server cap.
  */
 export async function main(ns: NS): Promise<void> {
-  if (ns.getPurchasedServerLimit() < 1) {
+  const limit = ns.getPurchasedServerLimit();
+  if (limit < 1) {
     ns.tprint('pserv-opt: purchased servers disabled (e.g. BitNode-9); exiting');
     return;
   }
 
-  let multi = CONFIG.initialMulti;
-  const maxRamAvailable = Math.pow(2, 20); // maxRam available for a server
-
-  let servers = ns.getPurchasedServers();
-  // raises multi if you have a server that increases maxRam
-  if (servers.length > 0) {
-    const maxRam = servers.reduce((a: number, e: string) => Math.max(a, ns.getServerMaxRam(e)), 0);
-    while (Math.pow(2, multi) < maxRam) {
-      ns.tprint(`max ram changed - bumping ram multi from ${multi} to ${multi + 4}`);
-      multi += 4;
-    }
-  }
-
-  const SHARE_NAME = 'pserv-share';
-  let nameCounter = 0;
-
   while (true) {
-    const ramPow = Math.pow(2, multi);
-    const ramThreshold = Math.min(maxRamAvailable, ramPow);
-    if (ramPow > maxRamAvailable) {
-      ns.tprint('servers maxed, killing process');
+    const owned = ns.getPurchasedServers();
+    const cash = ns.getPlayer().money;
+    const th = CONFIG.moneyThreshold;
+
+    if (allPurchasedServersAtCap(ns, owned, limit)) {
+      ns.tprint(`pserv-opt: all ${limit} purchased servers at ${ns.getPurchasedServerMaxRam()}GB cap; exiting`);
       return;
     }
 
-    servers = ns.getPurchasedServers();
-    const count = servers.length;
-    const cash = ns.getPlayer().money;
-    const cost = ns.getPurchasedServerCost(ramThreshold);
-    const canBuyMoreServers = count < ns.getPurchasedServerLimit();
-    const isMoneyAvailable = cash * CONFIG.moneyThreshold >= cost;
-
-    const shareExists = servers.includes(SHARE_NAME);
-    const shareRam = shareExists ? ns.getServerMaxRam(SHARE_NAME) : 0;
-    const shareNeedsUpgrade = shareExists && shareRam < ramThreshold;
-
-    if (!shareExists && !canBuyMoreServers && isMoneyAvailable) {
-      const serversWithRam = servers.map((s) => ({ name: s, ram: ns.getServerMaxRam(s) }));
-      const smallest = serversWithRam.reduce((min, s) => (s.ram < min.ram ? s : min));
-      ns.tprint(`${smallest.name}:${smallest.ram} server replaced with ${SHARE_NAME}`);
-      ns.killall(smallest.name);
-      ns.deleteServer(smallest.name);
-      const hostname = ns.purchaseServer(SHARE_NAME, ramThreshold);
-      if (hostname) {
-        ns.tprint(`${hostname}:${ramThreshold} share server purchased for ${formatter.format(cost)}`);
-        ns.run('share-server.js');
-      } else {
-        ns.tprint(`WARN: failed to purchase ${SHARE_NAME}`);
-      }
-    } else if (!shareExists && canBuyMoreServers && isMoneyAvailable) {
-      const hostname = ns.purchaseServer(SHARE_NAME, ramThreshold);
-      if (hostname) {
-        ns.tprint(`${hostname}:${ramThreshold} share server purchased for ${formatter.format(cost)}`);
-        ns.run('share-server.js');
-      } else {
-        ns.tprint(`WARN: failed to purchase ${SHARE_NAME}`);
-      }
-    } else if (shareNeedsUpgrade && isMoneyAvailable) {
-      ns.tprint(`${SHARE_NAME}:${shareRam} share server killed to upgrade`);
-      ns.killall(SHARE_NAME);
-      ns.deleteServer(SHARE_NAME);
-      const hostname = ns.purchaseServer(SHARE_NAME, ramThreshold);
-      if (hostname) {
-        ns.tprint(`${hostname}:${ramThreshold} share server upgraded for ${formatter.format(cost)}`);
-        ns.run('share-server.js');
-      } else {
-        ns.tprint(`WARN: failed to re-purchase ${SHARE_NAME} after delete`);
-      }
-    } else if (!canBuyMoreServers && isMoneyAvailable) {
-      const numbered = servers.filter((s) => s !== SHARE_NAME);
-      if (numbered.length === 0) continue;
-      const serversWithRam = numbered.map((s) => ({ name: s, ram: ns.getServerMaxRam(s) }));
-      const smallest = serversWithRam.reduce((min, s) => (s.ram < min.ram ? s : min));
-      const current = smallest.name;
-      const currentServerMaxRam = smallest.ram;
-
-      if (ramThreshold <= currentServerMaxRam) {
-        ns.tprint(`bumping ram multi from ${multi} to ${multi + 4}`);
-        multi += 4;
-        continue;
-      }
-
-      ns.tprint(`${current}:${currentServerMaxRam} server killed to upgrade`);
-      ns.killall(current);
-      ns.deleteServer(current);
-    } else if (canBuyMoreServers && isMoneyAvailable) {
-      if (!ns.getPurchasedServers().includes(SHARE_NAME)) {
-        const hostname = ns.purchaseServer(SHARE_NAME, ramThreshold);
-        if (hostname) {
-          ns.tprint(`${hostname}:${ramThreshold} share server purchased for ${formatter.format(cost)}`);
-          ns.run('share-server.js');
+    if (owned.length < limit) {
+      const ram = bestPurchasableRam(ns, cash, th);
+      const hostname = nextMissingHostname(limit, owned);
+      if (ram != null && hostname != null) {
+        const cost = ns.getPurchasedServerCost(ram);
+        const result = ns.purchaseServer(hostname, ram);
+        if (result) {
+          ns.tprint(`${result}:${ram} purchased for ${formatter.format(cost)}`);
+          if (hostname === SHARE_NAME) ns.run(SHARE_SCRIPT);
+        } else {
+          ns.tprint(`WARN: purchase failed for ${hostname} @ ${ram}GB`);
         }
       } else {
-        const name = 'pserv-' + nameCounter;
-        nameCounter++;
-        const newBoxHostname = ns.purchaseServer(name, ramThreshold);
-        ns.tprint(`${newBoxHostname}:${ramThreshold} server purchased for ${formatter.format(cost)}`);
+        console.log('Next: purchase (waiting for funds / threshold)');
+      }
+    } else {
+      let choice: { hostname: string; ram: number; cost: number } | null = null;
+      for (const hostname of owned) {
+        const currentRam = ns.getServerMaxRam(hostname);
+        const up = bestUpgradeForServer(ns, hostname, currentRam, cash, th);
+        if (!up) continue;
+        const cand = { hostname, ram: up.ram, cost: up.cost };
+        if (!choice || isBetterUpgrade(cand, choice)) choice = cand;
+      }
+
+      if (choice) {
+        // ns.killall(choice.hostname);
+        if (ns.upgradePurchasedServer(choice.hostname, choice.ram)) {
+          ns.tprint(`${choice.hostname} upgraded to ${choice.ram}GB for ${formatter.format(choice.cost)}`);
+          if (choice.hostname === SHARE_NAME) ns.run(SHARE_SCRIPT);
+        } else {
+          ns.tprint(`WARN: upgrade failed for ${choice.hostname} to ${choice.ram}GB`);
+        }
+      } else {
+        console.log('Next: upgrade (waiting), no affordable tier');
       }
     }
 
-    let nextAction = 'waiting for funds';
-    if (!shareExists && !canBuyMoreServers && isMoneyAvailable) nextAction = 'replace smallest with share server';
-    else if (!shareExists && canBuyMoreServers && isMoneyAvailable) nextAction = 'purchase share server';
-    else if (shareNeedsUpgrade && isMoneyAvailable) nextAction = 'upgrade share server';
-    else if (canBuyMoreServers && isMoneyAvailable) nextAction = 'purchase new server';
-    else if (!canBuyMoreServers && isMoneyAvailable) nextAction = 'upgrade smallest server';
-    console.log(`Next: ${nextAction}, cost: ${formatter.format(cost)}`);
     await ns.asleep(CONFIG.sleepMs);
   }
 }
