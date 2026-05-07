@@ -22,8 +22,7 @@ export const purchaseOrder = (a: StockPosition, b: StockPosition): number =>
 
 /** Pre-4S: prefer names with the strongest modeled edge first so limited cash goes to the best signals; tie-break by spread recovery. */
 export const purchaseOrderPre4sEdgeFirst = (a: StockPosition, b: StockPosition): number =>
-  b.absReturn() - a.absReturn() ||
-  Math.ceil(a.timeToCoverTheSpread()) - Math.ceil(b.timeToCoverTheSpread());
+  b.absReturn() - a.absReturn() || Math.ceil(a.timeToCoverTheSpread()) - Math.ceil(b.timeToCoverTheSpread());
 
 export const formatBP = (fraction: number): string => formatNumberShort(fraction * 100 * 100, 3, 2) + ' BP';
 
@@ -234,15 +233,16 @@ export async function liquidate(ns: NS, session: TradingSession): Promise<void> 
       totalRevenue +=
         (2 * avgShortCost - ((await sellShortWrapper(ns, sym, sharesShort)) as number)) * sharesShort - COMMISSION;
   }
-  sessionLog(
-    ns,
-    session,
-    `Sold ${totalSharesLong.toLocaleString('en')} long shares and ${totalSharesShort.toLocaleString(
-      'en',
-    )} short shares ` + `in ${totalStocks} stocks for ${formatMoney(totalRevenue, 3)}`,
-    true,
-    'success',
-  );
+  if (totalStocks > 0)
+    sessionLog(
+      ns,
+      session,
+      `Sold ${totalSharesLong.toLocaleString('en')} long shares and ${totalSharesShort.toLocaleString(
+        'en',
+      )} short shares ` + `in ${totalStocks} stocks for ${formatMoney(totalRevenue, 3)}`,
+      true,
+      'success',
+    );
 }
 
 export async function liquidateSlow(ns: NS, session: TradingSession, sleepInterval = 1000): Promise<void> {
@@ -320,11 +320,17 @@ export async function tryGet4SApi(
   if (await checkAccess(ns, 'has4SDataTIXAPI')) return false;
   const cost4sData = FOUR_S_DATA_BASE_COST * bitnodeMults.FourSigmaMarketDataCost;
   const cost4sApi = FOUR_S_API_BASE_COST * bitnodeMults.FourSigmaMarketDataApiCost;
-  const has4S = await checkAccess(ns, 'has4SData');
+  let has4S = await checkAccess(ns, 'has4SData');
   const totalCost = (has4S ? 0 : cost4sData) + cost4sApi;
   if (totalCost > budget) return false;
-  if (playerStats.money < totalCost) await liquidate(ns, session);
+  let availableMoney = playerStats.money;
+  if (availableMoney < totalCost) {
+    await liquidate(ns, session);
+    availableMoney = (await getPlayerInfo(ns)).money;
+    if (availableMoney < totalCost) return false;
+  }
   if (!has4S) {
+    if (availableMoney < cost4sData) return false;
     if (await tryBuy(ns, 'purchase4SMarketData'))
       sessionLog(
         ns,
@@ -334,8 +340,11 @@ export async function tryGet4SApi(
         true,
         'success',
       );
-    else sessionLog(ns, session, 'ERROR attempting to purchase 4SMarketData!', false, 'error');
+    else return false;
+    has4S = true;
+    availableMoney = (await getPlayerInfo(ns)).money;
   }
+  if (!has4S || availableMoney < cost4sApi) return false;
   if (await tryBuy(ns, 'purchase4SMarketDataTixApi')) {
     sessionLog(
       ns,
@@ -347,7 +356,6 @@ export async function tryGet4SApi(
     );
     return true;
   } else {
-    sessionLog(ns, session, 'ERROR attempting to purchase 4SMarketDataTixApi!', false, 'error');
     if (!(5 in session.dictSourceFiles)) {
       sessionLog(
         ns,

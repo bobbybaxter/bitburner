@@ -166,7 +166,7 @@ export async function unlockAugs(ns: NS, domains: string[], { cheap = false } = 
   let allFutureAugs = await getFutureAugs(ns, { domains, cheap });
   for (const aug of allFutureAugs.filter((a) => a.moneyOnly)) {
     const factionName = purchaseFactionName(aug.canPurchaseFrom) ?? 'unknown';
-    ns.tprint(`Skipping '${aug.name}' via ${factionName} — have enough rep, need ${ns.formatNumber(aug.price ?? 0)}.`);
+    ns.tprint(`Skipping '${aug.name}' via ${factionName} — have enough rep, need $${ns.formatNumber(aug.price ?? 0)}.`);
   }
 
   /** Failsafe: without this, a failed join (we assumed success) could spin as fast as Do/getFutureAugs allow. */
@@ -446,9 +446,9 @@ export async function getUnmetRequirements(
 
         if (!meetsReq) {
           const corps = await Promise.all(
-            ALL_CORPORATIONS.map(async (name) => {
-              const rep = (await Do(ns, 'ns.singularity.getCompanyRep', name)) as number;
-              return { name, rep };
+            ALL_CORPORATIONS.map(async (corp) => {
+              const rep = (await Do(ns, 'ns.singularity.getCompanyRep', corp.name)) as number;
+              return { name: corp.name, rep };
             }),
           );
           corps.sort((a, b) => b.rep - a.rep);

@@ -1,4 +1,9 @@
 /** @param {NS} ns */
 export async function main(ns) {
-  await ns.hack(ns.args[0], { threads: ns.args[1], ...(ns.args[2] ? { additionalMsec: ns.args[2] } : {}) });
+  const stock = ns.args[3] === 1 || ns.args[3] === true;
+  await ns.hack(ns.args[0], {
+    threads: ns.args[1],
+    ...(ns.args[2] ? { additionalMsec: ns.args[2] } : {}),
+    ...(stock ? { stock: true } : {}),
+  });
 }

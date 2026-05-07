@@ -32,6 +32,8 @@ export class TradingSession {
   detectedCycleTick = 0;
   inversionAgreementThreshold = 6;
   lastTick = 0;
+  rapidTickBuyCooldownRemaining = 0;
+  reanchorBuyCooldownRemaining = 0;
   options: Record<string, unknown> = {};
 
   serialize(): string {
@@ -51,6 +53,8 @@ export class TradingSession {
       detectedCycleTick: this.detectedCycleTick,
       inversionAgreementThreshold: this.inversionAgreementThreshold,
       lastTick: this.lastTick,
+      rapidTickBuyCooldownRemaining: this.rapidTickBuyCooldownRemaining,
+      reanchorBuyCooldownRemaining: this.reanchorBuyCooldownRemaining,
       options: this.options,
     });
   }

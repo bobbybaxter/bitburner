@@ -11,19 +11,13 @@ export function computeForecast(history: number[], start: number, end: number): 
   return ups / (len - 1);
 }
 
-// Single-pass volatility as the standard deviation of per-tick returns over a range (oldest first, newest last)
+// Volatility as the largest observed single-tick percentage price movement (matches original alainbryden implementation)
 export function computeVolatility(history: number[], start: number, end: number): number {
-  const n = end - start - 1;
-  if (n < 1) return 0;
-  let sum = 0,
-    sumSq = 0;
+  let max = 0;
   for (let i = start + 1; i < end; i++) {
-    const r = (history[i] - history[i - 1]) / history[i - 1];
-    sum += r;
-    sumSq += r * r;
+    max = Math.max(max, Math.abs(history[i] - history[i - 1]) / history[i - 1]);
   }
-  const mean = sum / n;
-  return Math.sqrt(Math.abs(sumSq / n - mean * mean));
+  return max;
 }
 
 // An "inversion" can be detected if two probabilities are far enough apart and are within "tolerance" of p1 being equal to 1-p2

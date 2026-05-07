@@ -1,6 +1,5 @@
 // TODO: refactor this file, separating into multiple files
 // TODO: make all rounds idempotent
-//
 
 import { AutocompleteData, CityName, CorpIndustryData, Material, NS, Product } from '@ns';
 import {
@@ -749,12 +748,19 @@ async function round3(option: Round3Option = PrecalculatedRound3Option.OPTION1):
   const hasPrimaryProductDivision = await hasDivision(ns, DivisionName.TOBACCO_0);
   if (hasPrimaryProductDivision) {
     const corp = (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>;
+    const investmentOffer = (await Do(ns, 'ns.corporation.getInvestmentOffer')) as ReturnType<
+      NS['corporation']['getInvestmentOffer']
+    >;
     const primaryDivision = (await Do(ns, 'ns.corporation.getDivision', productDivisionName)) as ReturnType<
       NS['corporation']['getDivision']
     >;
     const round3LikelyComplete = corp.divisions.length >= 20 && primaryDivision.products.length > 0;
-    if (round3LikelyComplete) {
-      ns.print('Round 3 appears complete. Continuing with improve-all-divisions phase...');
+    const alreadyPastRound3 = investmentOffer.round >= 4;
+    const hasEstablishedProductLine = primaryDivision.products.length >= 5;
+    if (round3LikelyComplete || alreadyPastRound3 || hasEstablishedProductLine) {
+      ns.print(
+        'Round 3 bootstrap is no longer needed for this corporation state. Continuing with improve-all-divisions phase...',
+      );
       ns.spawn(ns.getScriptName(), { spawnDelay: 500 }, '--improveAllDivisions');
       return;
     }

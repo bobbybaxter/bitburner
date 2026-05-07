@@ -4,6 +4,7 @@
  * `window.tmrAutoInf` and then exits — it does not stay in `ns.ps()`, so we detect that flag, not the process list).
  *
  * Usage:
+ *   run grind-infil.js
  *   run grind-infil.js <locationName> <factionName|money> <valueNeeded>
  *
  * Examples:
@@ -20,9 +21,15 @@
  * If infiltration ends with a dialog containing "Infiltration was cancelled because you were hospitalized",
  * the script dismisses it and starts a new run (travel + Infiltrate again). It does **not** auto-retry on
  * manual cancel or generic timeout — those stop the script so you can kill it or fix the UI.
+ *
+ * With **no positional arguments** (optional `--debug` only), the script prompts for a joined faction that still
+ * sells augmentations you do not have (`ns.getResetInfo().ownedAugs`), then a reputation target from the remaining aug
+ * rep requirements. The infiltratable **company location** is chosen automatically from `getPossibleLocations()` /
+ * `getInfiltration()` (see {@link pickAutoInfiltrationLocation}).
  */
 import type { NS } from '@ns';
 import { parseShortNumber } from '/helpers/stockmaster/parse-short-number.js';
+import { formatNumberShort } from './helpers/gangs/helpers';
 
 type SingularityTravelCity = Parameters<NS['singularity']['travelToCity']>[0];
 type SingularityGoLocation = Parameters<NS['singularity']['goToLocation']>[0];
@@ -37,6 +44,8 @@ function isInfiltrateAutomationActive(): boolean {
 
 const INFILTRATE_WAIT_MS = 12 * 60 * 1000;
 const POLL_MS = 300;
+/** Below this balance, interactive mode avoids picking a venue in another city (typical one-way travel cost). */
+const MIN_MONEY_ASSUME_TRAVEL_OK = 200_000;
 
 function normalize(s: string): string {
   return s.trim().toLowerCase();
@@ -384,43 +393,139 @@ function ensureInfiltrateHelperActive(ns: NS): void {
   }
 }
 
-export async function main(ns: NS): Promise<void> {
-  const rawLocation = ns.args[0];
-  const rawReward = ns.args[1];
-  const rawTarget = ns.args[2];
+type UnownedFactionAug = { name: string; repReq: number; price: number };
 
-  if (typeof rawLocation !== 'string' || typeof rawReward !== 'string' || rawTarget === undefined) {
-    ns.tprint('Usage: run grind-infil.js <locationName> <factionName|money> <valueNeeded>');
-    return;
+/** Joined factions with at least one aug not in `getResetInfo().ownedAugs`; each faction's list sorted by price desc. */
+function buildFactionUnownedAugLists(ns: NS): Map<string, UnownedFactionAug[]> {
+  const owned = ns.getResetInfo().ownedAugs;
+  const out = new Map<string, UnownedFactionAug[]>();
+  for (const faction of ns.getPlayer().factions) {
+    const rows: UnownedFactionAug[] = [];
+    for (const augName of ns.singularity.getAugmentationsFromFaction(faction)) {
+      if (owned.has(augName)) continue;
+      rows.push({
+        name: augName,
+        repReq: ns.singularity.getAugmentationRepReq(augName),
+        price: ns.singularity.getAugmentationPrice(augName),
+      });
+    }
+    rows.sort((a, b) => b.price - a.price);
+    if (rows.length > 0) out.set(faction, rows);
+  }
+  return out;
+}
+
+type InfilVenueCandidate = { name: string; city: string; tradeRep: number };
+
+function bestVenueForRepNeed(
+  candidates: InfilVenueCandidate[],
+  repStillNeeded: number,
+): InfilVenueCandidate | undefined {
+  if (candidates.length === 0) return undefined;
+  const canFinish = candidates.filter((c) => c.tradeRep >= repStillNeeded);
+  if (canFinish.length > 0) {
+    return canFinish.reduce((a, b) => (a.tradeRep <= b.tradeRep ? a : b));
+  }
+  return candidates.reduce((a, b) => (a.tradeRep >= b.tradeRep ? a : b));
+}
+
+/**
+ * Picks an infiltratable location name: among venues whose trade rep reaches the goal in one run, the smallest such
+ * rep (least overshoot); otherwise the highest trade rep. If that best is abroad and money &lt; {@link MIN_MONEY_ASSUME_TRAVEL_OK},
+ * uses the same rule restricted to the player's current city (or null if there are none).
+ */
+function pickAutoInfiltrationLocation(ns: NS, faction: string, targetRep: number): string | null {
+  const locs = ns.infiltration.getPossibleLocations();
+  if (locs.length === 0) return null;
+
+  const currentRep = ns.singularity.getFactionRep(faction);
+  const repStillNeeded = Math.max(0, targetRep - currentRep);
+
+  const candidates: InfilVenueCandidate[] = locs.map((loc) => ({
+    name: loc.name,
+    city: loc.city,
+    tradeRep: ns.infiltration.getInfiltration(loc.name).reward.tradeRep,
+  }));
+
+  const bestGlobal = bestVenueForRepNeed(candidates, repStillNeeded);
+  if (!bestGlobal) return null;
+
+  const player = ns.getPlayer();
+  if (bestGlobal.city !== player.city && player.money < MIN_MONEY_ASSUME_TRAVEL_OK) {
+    const inCity = candidates.filter((c) => c.city === player.city);
+    const bestLocal = bestVenueForRepNeed(inCity, repStillNeeded);
+    if (!bestLocal) {
+      ns.tprint(
+        `Cannot auto-pick a venue: best option "${bestGlobal.name}" is in ${bestGlobal.city}, but you have ` +
+          `${ns.formatNumber(player.money)} (< ${ns.formatNumber(MIN_MONEY_ASSUME_TRAVEL_OK)} for travel) and no ` +
+          `infiltratable locations in ${player.city}.`,
+      );
+      return null;
+    }
+    return bestLocal.name;
   }
 
-  const valueNeeded = parseValueNeeded(rawTarget);
-  if (!Number.isFinite(valueNeeded) || valueNeeded < 0) {
-    ns.tprint(`Invalid valueNeeded: ${String(rawTarget)} (use a number or e.g. 250k, 1.5m)`);
-    return;
+  return bestGlobal.name;
+}
+
+async function promptInteractiveGrindParams(ns: NS): Promise<{
+  rawLocation: string;
+  rawReward: string;
+  repTarget: number;
+} | null> {
+  const byFaction = buildFactionUnownedAugLists(ns);
+  if (byFaction.size === 0) {
+    ns.tprint('No joined factions with augmentations left to buy (per ResetInfo.ownedAugs).');
+    return null;
   }
 
-  const resolved = resolveInfiltratableLocation(ns, rawLocation);
-  if (!resolved) {
-    ns.tprint(
-      `Could not resolve infiltratable location from "${rawLocation}". Try e.g. MegaCorp, ECorp, KuaiGong International.`,
-    );
-    return;
+  const factionChoices = [...byFaction.keys()].sort((a, b) => a.localeCompare(b));
+  const factionPick = await ns.prompt('Pick a faction', {
+    type: 'select',
+    choices: factionChoices,
+  });
+  if (typeof factionPick !== 'string' || factionPick === '') {
+    ns.tprint('Cancelled faction selection.');
+    return null;
   }
 
-  const mode = normalize(rawReward) === 'money' ? 'money' : 'faction';
-  const factionName = mode === 'faction' ? rawReward : '';
-
-  if (mode === 'faction' && !factionName) {
-    ns.tprint('Faction name cannot be empty when not using money.');
-    return;
+  const rows = byFaction.get(factionPick);
+  if (!rows?.length) {
+    ns.tprint(`Internal error: no rows for faction "${factionPick}".`);
+    return null;
   }
 
-  ns.tprint(
-    `Grinding infiltration at ${resolved.location} (${resolved.city}) — ${mode === 'money' ? 'money' : `rep for ${factionName}`} ≥ ${ns.formatNumber(valueNeeded)}`,
-  );
+  const repTiers = [...new Set(rows.map((r) => r.repReq))].sort((a, b) => b - a);
+  const repLabels = repTiers.map((r) => `${formatNumberShort(r)} (${ns.formatNumber(r)})`);
+  const repPick = await ns.prompt(`Select a reputation target`, {
+    type: 'select',
+    choices: repLabels,
+  });
+  if (typeof repPick !== 'string' || repPick === '') {
+    ns.tprint('Cancelled reputation target.');
+    return null;
+  }
+  const repIdx = repLabels.indexOf(repPick);
+  const repTarget = repIdx >= 0 ? repTiers[repIdx]! : parseValueNeeded(repPick);
+  if (!Number.isFinite(repTarget) || repTarget < 0) {
+    ns.tprint(`Invalid reputation target: ${repPick}`);
+    return null;
+  }
 
-  const debugFaction = ns.args.includes('--debug');
+  const autoLoc = pickAutoInfiltrationLocation(ns, factionPick, repTarget);
+  if (!autoLoc) return null;
+
+  return { rawLocation: autoLoc, rawReward: factionPick, repTarget };
+}
+
+async function grindInfiltrationLoop(
+  ns: NS,
+  resolved: { location: string; city: string },
+  mode: 'money' | 'faction',
+  factionName: string,
+  valueNeeded: number,
+  debugFaction: boolean,
+): Promise<void> {
   const dbg = debugFaction ? (msg: string) => ns.tprint(`[grind-infil] ${msg}`) : undefined;
   if (debugFaction) {
     dbg?.('diagnostics enabled (--debug): faction dropdown + travel/location');
@@ -570,4 +675,60 @@ export async function main(ns: NS): Promise<void> {
       `Done. ${factionName} rep is ${ns.formatNumber(ns.singularity.getFactionRep(factionName))} (needed ≥ ${ns.formatNumber(valueNeeded)}).`,
     );
   }
+}
+
+export async function main(ns: NS): Promise<void> {
+  const debugFaction = ns.args.includes('--debug');
+  const posArgs = ns.args.filter((a) => a !== '--debug');
+
+  let rawLocation: string;
+  let rawReward: string;
+  let rawTarget: string | number | boolean;
+
+  if (posArgs.length >= 3) {
+    const a0 = posArgs[0];
+    const a1 = posArgs[1];
+    const a2 = posArgs[2];
+    if (typeof a0 !== 'string' || typeof a1 !== 'string' || a2 === undefined) {
+      ns.tprint('Usage: run grind-infil.js <locationName> <factionName|money> <valueNeeded>');
+      return;
+    }
+    rawLocation = a0;
+    rawReward = a1;
+    rawTarget = a2;
+  } else {
+    const picked = await promptInteractiveGrindParams(ns);
+    if (!picked) return;
+    rawLocation = picked.rawLocation;
+    rawReward = picked.rawReward;
+    rawTarget = picked.repTarget;
+  }
+
+  const valueNeeded = typeof rawTarget === 'number' ? rawTarget : parseValueNeeded(rawTarget);
+  if (!Number.isFinite(valueNeeded) || valueNeeded < 0) {
+    ns.tprint(`Invalid valueNeeded: ${String(rawTarget)} (use a number or e.g. 250k, 1.5m)`);
+    return;
+  }
+
+  const resolved = resolveInfiltratableLocation(ns, rawLocation);
+  if (!resolved) {
+    ns.tprint(
+      `Could not resolve infiltratable location from "${rawLocation}". Try e.g. MegaCorp, ECorp, KuaiGong International.`,
+    );
+    return;
+  }
+
+  const mode = normalize(rawReward) === 'money' ? 'money' : 'faction';
+  const factionName = mode === 'faction' ? rawReward : '';
+
+  if (mode === 'faction' && !factionName) {
+    ns.tprint('Faction name cannot be empty when not using money.');
+    return;
+  }
+
+  ns.tprint(
+    `Grinding infiltration at ${resolved.location} (${resolved.city}) — ${mode === 'money' ? 'money' : `rep for ${factionName}`} ≥ ${ns.formatNumber(valueNeeded)}`,
+  );
+
+  await grindInfiltrationLoop(ns, resolved, mode, factionName, valueNeeded, debugFaction);
 }
