@@ -6,7 +6,7 @@ import { NS } from '@ns';
 export async function main(ns: NS): Promise<void> {
   const server = 'home';
 
-  ns.exec('/hack1-helpers/restart-pservs.js', server);
+  ns.exec('/hack1-helpers/restart-cloud.js', server);
   ns.exec('/hack1-helpers/restart-hacks.js', server);
   ns.exec('/hack1-helpers/restart-home-hacks.js', server);
 }

@@ -1,4 +1,4 @@
-import { NS } from '@ns';
+import { NS, Server } from '@ns';
 import { getServerNames } from '/helpers/get-server-names.js';
 import { Queue } from '/helpers/Queue.js';
 import { Do } from './helpers/do';
@@ -29,15 +29,14 @@ export async function main(ns: NS): Promise<void> {
   while (true) {
     ns.exec('/helpers/open-all-ports.js', 'home');
 
-    const servers = getServerNames(ns)
-      .map((s) => s.hostname)
-      .filter((name) => name !== 'home' && !name.includes('pserv') && !name.startsWith('hacknet'));
-
+    const servers = getServerNames(ns).map((s) => s.hostname);
     const hackLevel = ns.getHackingLevel();
     let serversBackdoored = 0;
 
     for (const hostname of servers) {
-      let server = ns.getServer(hostname);
+      let server = ns.getServer(hostname) as Server;
+
+      if (server.purchasedByPlayer) continue;
 
       if (server.backdoorInstalled) {
         serversBackdoored++;
@@ -59,7 +58,7 @@ export async function main(ns: NS): Promise<void> {
         for (const hop of path) {
           await Do(ns, 'ns.singularity.connect', hop);
         }
-        server = ns.getServer(hostname);
+        server = ns.getServer(hostname) as Server;
         try {
           await Do(ns, 'ns.singularity.installBackdoor');
           ns.tprint(`SUCCESS: Backdoor installed on ${hostname}`);

@@ -145,7 +145,7 @@ export async function main(ns: NS): Promise<void> {
   const runOptions = getConfiguration(ns, argsSchema);
   if (!runOptions) return;
 
-  const hasTixApiAccess = (await getNsDataThroughFile(ns, 'ns.stock.hasTIXAPIAccess()', '/Temp/hasTIX.txt')) as boolean;
+  const hasTixApiAccess = (await getNsDataThroughFile(ns, 'ns.stock.hasTixApiAccess()', '/Temp/hasTIX.txt')) as boolean;
   const immediateLiquidate = (runOptions.l as boolean) || (runOptions.liquidate as boolean);
   const slowLiquidate = (runOptions.s as boolean) || (runOptions['liquidate-slow'] as boolean);
   if (immediateLiquidate && slowLiquidate)
@@ -310,7 +310,7 @@ export async function main(ns: NS): Promise<void> {
     try {
       const playerStats = (await getPlayerInfo(ns)) as { money: number };
       const reserve = parseReserve(ns, session.options['reserve']);
-      if (pre4s) pre4s = !(await checkAccess(ns, 'has4SDataTIXAPI'));
+      if (pre4s) pre4s = !(await checkAccess(ns, 'has4SDataTixApi'));
       const { holdings, ticked } = await refresh(ns, session, !pre4s, allStocks, myStocks);
       const corpus = holdings + playerStats.money;
       const maxHoldings = (1 - fracH) * corpus;

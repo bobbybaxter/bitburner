@@ -21,8 +21,8 @@ export async function main(ns: NS): Promise<void> {
   if (!ns.isRunning('stockmaster.js')) await ns.run('stockmaster.js', 1);
   if (!ns.isRunning('hacknet-opt.js')) await ns.run('hacknet-opt.js', 1, 1, 100);
   if (!ns.isRunning('home-opt.js')) await ns.run('home-opt.js', 1);
-  if (ns.getPurchasedServerLimit() > 0 && !ns.isRunning('pserv-opt.js')) {
-    await ns.run('pserv-opt.js', 1);
+  if (ns.cloud.getServerLimit() > 0 && !ns.isRunning('cloud-opt.js')) {
+    await ns.run('cloud-opt.js', 1);
   }
 
   const resetInfo = ns.getResetInfo();

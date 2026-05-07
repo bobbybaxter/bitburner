@@ -1,4 +1,4 @@
-import { AutocompleteData, NS, RunOptions, ScriptArg } from '@ns';
+import { AutocompleteData, NS, RunOptions, ScriptArg, Server } from '@ns';
 import { RESERVED_RAM_ON_HOME_SERVER, SHARE_SCRIPT_NAME, STOCK_MARKET_COMMISSION_FEE } from '/libs/constants';
 
 export interface ScanServerInfo {
@@ -257,7 +257,7 @@ export class NetscriptExtension {
       const ramPerThread = this.ns.getScriptRam(SHARE_SCRIPT_NAME, 'home');
       const effect = 1 + Math.log(1 + threads) / 25;
       this.ns.tprint(
-        `Threads: ${threads}:. RAM: ${this.ns.formatRam(ramPerThread * threads)}` + `. Effect: ${effect.toFixed(4)}`,
+        `Threads: ${threads}:. RAM: ${this.ns.format.ram(ramPerThread * threads)}` + `. Effect: ${effect.toFixed(4)}`,
       );
     }
   }
@@ -265,7 +265,7 @@ export class NetscriptExtension {
   getPrivateServersCost(): number {
     let cost = 0;
     this.ns.cloud.getServerNames().forEach((hostname) => {
-      cost += this.ns.getPurchasedServerCost(this.ns.getServerMaxRam(hostname));
+      cost += this.ns.cloud.getServerCost(this.ns.getServerMaxRam(hostname));
     });
     return cost;
   }
@@ -278,7 +278,7 @@ export class NetscriptExtension {
     // increasedSecurityFor1ThreadGrowing is same for all servers, it's 0 if server reaches max money
     const increasedSecurityFor1ThreadGrowing = 0.004;
 
-    const server = this.ns.getServer(hostname);
+    const server = this.ns.getServer(hostname) as Server;
     const player = this.ns.getPlayer();
 
     // Flow:
@@ -332,7 +332,7 @@ export class NetscriptExtension {
     // increasedSecurityFor1ThreadGrowing is same for all servers, it's 0 if server reaches max money
     const increasedSecurityFor1ThreadGrowing = 0.004;
 
-    const server = this.ns.getServer(hostname);
+    const server = this.ns.getServer(hostname) as Server;
     const player = this.ns.getPlayer();
 
     // Flow:

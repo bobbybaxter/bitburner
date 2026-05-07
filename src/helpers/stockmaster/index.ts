@@ -27,7 +27,6 @@ import { formatDuration } from './format-duration';
 import { formatMoney } from './format-money';
 import { formatNumber } from './format-number';
 import { formatNumberShort, symbols } from './format-number-short';
-import { formatRam } from './format-ram';
 import { getActiveSourceFiles } from './get-active-source-files';
 import { getActiveSourceFiles_Custom } from './get-active-source-files-custom';
 import { getConfiguration } from './get-configuration';
@@ -105,7 +104,6 @@ export {
   formatMoney,
   formatNumber,
   formatNumberShort,
-  formatRam,
   FOUR_S_API_BASE_COST,
   FOUR_S_DATA_BASE_COST,
   getActiveSourceFiles,

@@ -1,4 +1,4 @@
-export const PRIVATE_SERVER_NAME_PREFIX = 'pserv-';
+export const PRIVATE_SERVER_NAME_PREFIX = 'cloud-';
 
 export const RESERVED_RAM_ON_HOME_SERVER = 16;
 export const HACK_SCRIPT_NAME = 'hack.js';

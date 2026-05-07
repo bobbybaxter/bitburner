@@ -495,7 +495,7 @@ export async function main(nsContext: NS): Promise<void> {
   headers.push('<div>Scripts</div>');
   values.push("<div id='hud-scripts-count'>0</div>");
   mountKarmaHudRowUnderInt(doc);
-  if (ns.stock.hasWSEAccount()) {
+  if (ns.stock.hasWseAccount()) {
     mountStockHudRowsUnderMoney(doc);
   }
   if (ns.corporation.hasCorporation()) {
@@ -549,7 +549,7 @@ export async function main(nsContext: NS): Promise<void> {
         hudKarma.innerText = ns.format.number(ns.getPlayer().karma);
       }
 
-      if (ns.stock.hasWSEAccount()) {
+      if (ns.stock.hasWseAccount()) {
         const hudStockWorthValue = doc.getElementById('hud-stock-worth');
         if (hudStockWorthValue === null) {
           rerun(ns);

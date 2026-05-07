@@ -46,10 +46,10 @@ function canAfford(cash: number, threshold: number, cost: number): boolean {
 
 /** Largest RAM tier whose purchase price fits the money rule. */
 function bestPurchasableRam(ns: NS, cash: number, threshold: number): number | null {
-  const cap = ns.getPurchasedServerMaxRam();
+  const cap = ns.cloud.getRamLimit();
   let best: number | null = null;
   for (const ram of ramTiers(cap)) {
-    const cost = ns.getPurchasedServerCost(ram);
+    const cost = ns.cloud.getServerCost(ram);
     if (!Number.isFinite(cost) || cost <= 0) continue;
     if (canAfford(cash, threshold, cost)) best = ram;
   }
@@ -64,11 +64,11 @@ function bestUpgradeForServer(
   cash: number,
   threshold: number,
 ): { ram: number; cost: number } | null {
-  const cap = ns.getPurchasedServerMaxRam();
+  const cap = ns.cloud.getRamLimit();
   let best: { ram: number; cost: number } | null = null;
   for (const ram of ramTiers(cap)) {
     if (ram <= currentRam) continue;
-    const cost = ns.getPurchasedServerUpgradeCost(hostname, ram);
+    const cost = ns.cloud.getServerUpgradeCost(hostname, ram);
     if (cost < 0 || !Number.isFinite(cost)) continue;
     if (canAfford(cash, threshold, cost)) best = { ram, cost };
   }
@@ -85,9 +85,9 @@ function isBetterUpgrade(
   return a.hostname < b.hostname;
 }
 
-function allPurchasedServersAtCap(ns: NS, owned: readonly string[], limit: number): boolean {
+function allCloudServersAtCap(ns: NS, owned: readonly string[], limit: number): boolean {
   if (owned.length !== limit) return false;
-  const cap = ns.getPurchasedServerMaxRam();
+  const cap = ns.cloud.getRamLimit();
   return owned.every((h) => ns.getServerMaxRam(h) === cap);
 }
 
@@ -96,7 +96,7 @@ function allPurchasedServersAtCap(ns: NS, owned: readonly string[], limit: numbe
  * best affordable tier jump each tick when at the server cap.
  */
 export async function main(ns: NS): Promise<void> {
-  const limit = ns.getPurchasedServerLimit();
+  const limit = ns.cloud.getServerLimit();
   if (limit < 1) {
     ns.tprint('pserv-opt: purchased servers disabled (e.g. BitNode-9); exiting');
     return;
@@ -107,8 +107,8 @@ export async function main(ns: NS): Promise<void> {
     const cash = ns.getPlayer().money;
     const th = CONFIG.moneyThreshold;
 
-    if (allPurchasedServersAtCap(ns, owned, limit)) {
-      ns.tprint(`pserv-opt: all ${limit} purchased servers at ${ns.getPurchasedServerMaxRam()}GB cap; exiting`);
+    if (allCloudServersAtCap(ns, owned, limit)) {
+      ns.tprint(`pserv-opt: all ${limit} purchased servers at ${ns.cloud.getRamLimit()}GB cap; exiting`);
       return;
     }
 
@@ -116,8 +116,8 @@ export async function main(ns: NS): Promise<void> {
       const ram = bestPurchasableRam(ns, cash, th);
       const hostname = nextMissingHostname(limit, owned);
       if (ram != null && hostname != null) {
-        const cost = ns.getPurchasedServerCost(ram);
-        const result = ns.purchaseServer(hostname, ram);
+        const cost = ns.cloud.getServerCost(ram);
+        const result = ns.cloud.purchaseServer(hostname, ram);
         if (result) {
           ns.tprint(`${result}:${ram} purchased for ${formatter.format(cost)}`);
           if (hostname === SHARE_NAME) ns.run(SHARE_SCRIPT);
@@ -139,7 +139,7 @@ export async function main(ns: NS): Promise<void> {
 
       if (choice) {
         // ns.killall(choice.hostname);
-        if (ns.upgradePurchasedServer(choice.hostname, choice.ram)) {
+        if (ns.cloud.upgradeServer(choice.hostname, choice.ram)) {
           ns.tprint(`${choice.hostname} upgraded to ${choice.ram}GB for ${formatter.format(choice.cost)}`);
           if (choice.hostname === SHARE_NAME) ns.run(SHARE_SCRIPT);
         } else {

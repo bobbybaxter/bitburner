@@ -130,7 +130,7 @@ export async function main(ns: NS) {
     for (const server of serversInfo) {
       if (maxLen.serverName < server.name.length) maxLen.serverName = server.name.length;
       if (maxLen.level < server.level.toString().length) maxLen.level = server.level.toString().length;
-      if (maxLen.ram < ns.formatRam(server.ram).length) maxLen.ram = ns.formatRam(server.ram).length;
+      if (maxLen.ram < ns.format.ram(server.ram).length) maxLen.ram = ns.format.ram(server.ram).length;
       if (maxLen.cores < server.cores.toString().length) maxLen.cores = server.cores.toString().length;
       if (maxLen.cache < server.cache.toString().length) maxLen.cache = server.cache.toString().length;
     }
@@ -144,8 +144,8 @@ export async function main(ns: NS) {
       ns.print(
         `-${(server.name + ':').padEnd(maxLen.serverName + 1, ' ')} Level: ${server.level
           .toString()
-          .padStart(maxLen.level, ' ')} -- Ram: ${ns
-          .formatRam(server.ram)
+          .padStart(maxLen.level, ' ')} -- Ram: ${ns.format
+          .ram(server.ram)
           .padStart(maxLen.ram, ' ')} -- Cores: ${server.cores
           .toString()
           .padStart(maxLen.cores, ' ')} -- Cache: ${server.cache.toString().padStart(maxLen.cache, ' ')}`,

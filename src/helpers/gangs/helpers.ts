@@ -238,7 +238,7 @@ function checkBackwardsCompatibility(ns: NS, command: string) {
     .replaceAll('cloud.upgradeServer', 'upgradePurchasedServer')
     .replaceAll('cloud.renameServer', 'renamePurchasedServer')
     .replaceAll('cloud.deleteServer', 'deleteServer')
-    .replaceAll('cloud.getServerNames', 'cloud.getServerNames')
+    .replaceAll('cloud.getServerNames', 'getPurchasedServers')
     .replaceAll('cloud.getServerLimit', 'getPurchasedServerLimit')
     .replaceAll('cloud.getRamLimit', 'getPurchasedServerMaxRam');
 
@@ -571,13 +571,13 @@ export async function runCommand_Custom(
           true,
         );
         if (reqRam > homeMaxRam)
-          reason = ` as it requires ${formatRam(reqRam)} RAM, but home only has ${formatRam(homeMaxRam)}`;
+          reason = ` as it requires ${ns.format.ram(reqRam)} RAM, but home only has ${ns.format.ram(homeMaxRam)}`;
         else if (reqRam > homeMaxRam - homeUsedRam)
-          reason = ` as it requires ${formatRam(reqRam)} RAM, but home only has ${formatRam(homeMaxRam - homeUsedRam)} of ${formatRam(homeMaxRam)} free.`;
+          reason = ` as it requires ${ns.format.ram(reqRam)} RAM, but home only has ${ns.format.ram(homeMaxRam - homeUsedRam)} of ${ns.format.ram(homeMaxRam)} free.`;
         else
           reason =
-            `, but the reason is unclear. (Perhaps a syntax error?) This script requires ${formatRam(reqRam)} RAM, and ` +
-            `home has ${formatRam(homeMaxRam - homeUsedRam)} of ${formatRam(homeMaxRam)} free, which appears to be sufficient. ` +
+            `, but the reason is unclear. (Perhaps a syntax error?) This script requires ${ns.format.ram(reqRam)} RAM, and ` +
+            `home has ${ns.format.ram(homeMaxRam - homeUsedRam)} of ${ns.format.ram(homeMaxRam)} free, which appears to be sufficient. ` +
             `If you wish to troubleshoot, you can try manually running the script with the arguments listed below:`;
       } catch (e) {
         console.error(e);
