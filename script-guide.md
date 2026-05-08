@@ -145,14 +145,14 @@ run scan.js
 
 ## share-server.ts
 
-**What it does:** Deploys `helpers/share-loop.js` to one or more servers and runs it with max available threads on each. The share loop contributes that server's CPU to your current faction (or gang) to earn reputation when idle. The dedicated `cloud-share` server is *always* included, plus any extra hostnames you pass as arguments. Requires `helpers/share-loop.js` to exist.
+**What it does:** Deploys `helpers/share-loop.js` to one or more servers and runs it with max available threads on each. The share loop contributes that server's CPU to your current faction (or gang) to earn reputation when idle. The dedicated `cloud-share` server is _always_ included, plus any extra hostnames you pass as arguments. Requires `helpers/share-loop.js` to exist.
 
 **How to run:**
 
 ```bash
 run share-server.js                          # share on cloud-share
 run share-server.js home                     # share on home + cloud-share
-run share-server.js home pserv-1 pserv-2     # share on all listed + cloud-share
+run share-server.js home cloud-1 cloud-2     # share on all listed + cloud-share
 ```
 
 - **Args (optional):** Any number of hostnames to share from. `cloud-share` is always added automatically.

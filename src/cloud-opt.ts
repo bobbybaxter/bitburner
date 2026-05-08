@@ -2,7 +2,7 @@
 
 import { NS } from '@ns';
 
-const SHARE_NAME = 'pserv-share';
+const SHARE_NAME = 'cloud-share';
 const SHARE_SCRIPT = 'share-server.js';
 
 const formatter = new Intl.NumberFormat('en-US', {
@@ -28,11 +28,11 @@ function ramTiers(maxRam: number): number[] {
   return tiers;
 }
 
-/** pserv-share, then pserv-1 … pserv-(limit-1). */
+/** cloud-share, then cloud-1 … cloud-(limit-1). */
 function purchaseHostnameOrder(limit: number): string[] {
   const names = [SHARE_NAME];
   for (let i = 1; i < limit; i++) {
-    names.push(`pserv-${i}`);
+    names.push(`cloud-${i}`);
   }
   return names;
 }
@@ -102,7 +102,7 @@ function allCloudServersAtCap(ns: NS, owned: readonly string[], limit: number): 
 export async function main(ns: NS): Promise<void> {
   const limit = ns.cloud.getServerLimit();
   if (limit < 1) {
-    ns.tprint('pserv-opt: purchased servers disabled (e.g. BitNode-9); exiting');
+    ns.tprint('cloud-opt: purchased servers disabled (e.g. BitNode-9); exiting');
     return;
   }
 
@@ -112,7 +112,7 @@ export async function main(ns: NS): Promise<void> {
     const th = CONFIG.moneyThreshold;
 
     if (allCloudServersAtCap(ns, owned, limit)) {
-      ns.tprint(`pserv-opt: all ${limit} purchased servers at ${ns.cloud.getRamLimit()}GB cap; exiting`);
+      ns.tprint(`cloud-opt: all ${limit} purchased servers at ${ns.cloud.getRamLimit()}GB cap; exiting`);
       return;
     }
 

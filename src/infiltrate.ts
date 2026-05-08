@@ -517,6 +517,8 @@ export async function main(ns: NS): Promise<void> {
   }
 
   if (args.stop) {
+    // Fully restore document listeners only when explicitly stopping automation.
+    unwrapEventListeners();
     return;
   }
 
@@ -618,7 +620,6 @@ function getLines(elements: NodeListOf<Element> | Element[]): string[] {
  * Reset the state after infiltration is done.
  */
 function endInfiltration() {
-  unwrapEventListeners();
   state.company = '';
   state.started = false;
 }
