@@ -111,12 +111,29 @@ function clickReactButton(btn: HTMLElement): boolean {
 }
 
 const HOSPITAL_CANCEL_INFIL_MSG = 'Infiltration was cancelled because you were hospitalized';
+const HOSPITAL_AUTOMATION_MSG = 'Do not try to automate infiltration';
+const HOSPITAL_DIALOG_HINTS = [HOSPITAL_CANCEL_INFIL_MSG, HOSPITAL_AUTOMATION_MSG] as const;
+
+type InfilHospitalDialogReason = 'hospitalized' | 'anti-automation';
+
+function getInfilHospitalDialogReason(): InfilHospitalDialogReason | null {
+  for (const sel of ['[role="dialog"]', '.MuiModal-root']) {
+    for (const el of doc.querySelectorAll(sel)) {
+      const node = el as HTMLElement;
+      const text = node.textContent ?? '';
+      if (HOSPITAL_DIALOG_HINTS.every((hint) => !text.includes(hint))) continue;
+      if (text.includes(HOSPITAL_AUTOMATION_MSG)) return 'anti-automation';
+      if (text.includes(HOSPITAL_CANCEL_INFIL_MSG)) return 'hospitalized';
+    }
+  }
+  return null;
+}
 
 function hospitalCancelInfilDialogRoot(): HTMLElement | null {
   for (const sel of ['[role="dialog"]', '.MuiModal-root']) {
     for (const el of doc.querySelectorAll(sel)) {
       const node = el as HTMLElement;
-      if ((node.textContent ?? '').includes(HOSPITAL_CANCEL_INFIL_MSG)) return node;
+      if (HOSPITAL_DIALOG_HINTS.some((hint) => (node.textContent ?? '').includes(hint))) return node;
     }
   }
   return null;
@@ -447,7 +464,9 @@ function buildFactionUnownedAugLists(ns: NS): Map<FactionName, UnownedFactionAug
   return out;
 }
 
-type InfilVenueCandidate = { name: string; city: string; tradeRep: number };
+const MAX_AUTO_INFILTRATION_DIFFICULTY = 3.5;
+
+type InfilVenueCandidate = { name: string; city: string; tradeRep: number; difficulty: number };
 
 function bestVenueForRepNeed(
   candidates: InfilVenueCandidate[],
@@ -473,11 +492,25 @@ function pickAutoInfiltrationLocation(ns: NS, faction: FactionName, targetRep: n
   const currentRep = ns.singularity.getFactionRep(faction);
   const repStillNeeded = Math.max(0, targetRep - currentRep);
 
-  const candidates: InfilVenueCandidate[] = locs.map((loc) => ({
-    name: loc.name,
-    city: loc.city,
-    tradeRep: ns.infiltration.getInfiltration(loc.name).reward.tradeRep,
-  }));
+  const allCandidates: InfilVenueCandidate[] = locs.map((loc) => {
+    const infil = ns.infiltration.getInfiltration(loc.name);
+    return {
+      name: loc.name,
+      city: loc.city,
+      tradeRep: infil.reward.tradeRep,
+      difficulty: infil.difficulty,
+    };
+  });
+  const candidates = allCandidates.filter((c) => c.difficulty <= MAX_AUTO_INFILTRATION_DIFFICULTY);
+  if (candidates.length === 0) {
+    const easiest = allCandidates.reduce((a, b) => (a.difficulty <= b.difficulty ? a : b));
+    ns.tprint(
+      `Cannot auto-pick an infiltratable venue: all available options are above difficulty ` +
+        `${MAX_AUTO_INFILTRATION_DIFFICULTY.toFixed(1)} (NS "Impossible" threshold). Easiest currently is ` +
+        `"${easiest.name}" in ${easiest.city} at ${easiest.difficulty.toFixed(3)}.`,
+    );
+    return null;
+  }
 
   const bestGlobal = bestVenueForRepNeed(candidates, repStillNeeded);
   if (!bestGlobal) return null;
@@ -624,12 +657,12 @@ async function grindInfiltrationLoop(ns: NS, input: GrindInfiltrationLoopInput):
 
     const deadline = Date.now() + INFILTRATE_WAIT_MS;
     let rewardBtn: HTMLElement | undefined;
-    let sawHospitalCancelDialog = false;
+    let hospitalDialogReason: InfilHospitalDialogReason | null = null;
     let debugLoggedTradeUi = false;
     while (Date.now() < deadline && !rewardBtn) {
       await ns.sleep(POLL_MS);
-      if (hospitalCancelInfilDialogRoot()) {
-        sawHospitalCancelDialog = true;
+      hospitalDialogReason = getInfilHospitalDialogReason();
+      if (hospitalDialogReason) {
         ns.tprint('Hospital cancellation dialog detected; dismissing and restarting infiltration.');
         await dismissHospitalCancelInfilDialog(ns);
         break;
@@ -652,7 +685,15 @@ async function grindInfiltrationLoop(ns: NS, input: GrindInfiltrationLoopInput):
       break;
     }
 
-    if (sawHospitalCancelDialog) {
+    if (hospitalDialogReason === 'anti-automation') {
+      ns.tprint(
+        'Detected anti-automation hospitalization from infiltration minigame input checks. ' +
+          'Stopping grind-infil: manual infiltration is required on this game version.',
+      );
+      return;
+    }
+
+    if (hospitalDialogReason === 'hospitalized') {
       await ns.sleep(500);
       continue;
     }
