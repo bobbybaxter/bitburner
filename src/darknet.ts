@@ -12,6 +12,7 @@ import {
   runMemoryReallocationPass,
   saveIfDirtyOrDue,
 } from '/helpers/darknet/lifecycle.js';
+import { processWorkerSyncMessages } from '/helpers/darknet/worker-sync.js';
 
 type Flags = {
   interval: number;
@@ -28,7 +29,8 @@ type Flags = {
 export async function main(ns: NS): Promise<void> {
   const flags = ns.flags([
     ['interval', 5_000],
-    ['authAttempts', 2],
+    // <= 0 means "no cap" (attempt all eligible connected hosts each pass).
+    ['authAttempts', 0],
     ['heartbleedSamples', 2],
     ['memoryReallocationTargets', 2],
     ['deployWorkers', true],
@@ -40,6 +42,9 @@ export async function main(ns: NS): Promise<void> {
 
   if (!flags.noTail) ns.ui.openTail();
   ns.disableLog('sleep');
+  ns.disableLog('dnet.probe');
+  ns.disableLog('getServerMaxRam');
+  ns.disableLog('getServerUsedRam');
 
   if (!ns.fileExists('DarkscapeNavigator.exe', 'home')) {
     ns.tprint('ERROR: DarkscapeNavigator.exe is required before running darknet.ts');
@@ -52,8 +57,9 @@ export async function main(ns: NS): Promise<void> {
   );
 
   while (true) {
+    const workerSync = processWorkerSyncMessages(context);
     discoverFromCurrentServer(context);
-    const auth = await attemptAuthOnConnectedServers(context, Math.max(0, Math.floor(flags.authAttempts)));
+    const auth = await attemptAuthOnConnectedServers(context, Math.floor(flags.authAttempts));
     await runMemoryReallocationPass(context, Math.max(0, Math.floor(flags.memoryReallocationTargets)));
     if (flags.deployWorkers) {
       deployCrawlerWorkers(context, {
@@ -67,7 +73,7 @@ export async function main(ns: NS): Promise<void> {
       openCachesOnCurrentServer: flags.openCaches,
       runPhishingAttack: flags.phishing,
     });
-    saveIfDirtyOrDue(context, auth.changedCredentials);
+    saveIfDirtyOrDue(context, auth.changedCredentials || workerSync.changedCredentials);
     await ns.sleep(Math.max(200, flags.interval));
   }
 }

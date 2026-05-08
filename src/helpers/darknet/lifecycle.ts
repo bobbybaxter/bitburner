@@ -18,6 +18,12 @@ const DEFAULT_AUTH_ATTEMPT_LIMIT = 2;
 const DEFAULT_HEARTBLEED_SAMPLE_LIMIT = 2;
 const DEFAULT_MEMORY_REALLOCATION_LIMIT = 2;
 const WORKER_DEPLOY_COOLDOWN_MS = 30_000;
+const DARKNET_WORKER_SCRIPT = 'darknet-worker.js';
+
+function syncWorkerScriptToConnectedHost(ns: NS, hostname: DarknetHostname): void {
+  // Force overwrite so script changes propagate hop-by-hop across connected darknet hosts.
+  ns.scp(DARKNET_WORKER_SCRIPT, hostname, ns.getHostname());
+}
 
 export type DarknetHintCollectionOptions = {
   maxHeartbleedTargets?: number;
@@ -105,6 +111,7 @@ export function discoverFromCurrentServer(context: DarknetContext): void {
       if (result.success) {
         passwordRecord.lastUsedAt = now;
         node.hasSession = true;
+        syncWorkerScriptToConnectedHost(ns, neighbor);
         logAuthEvent(ns, {
           ts: now,
           hostname: neighbor,
@@ -132,6 +139,10 @@ export function discoverFromCurrentServer(context: DarknetContext): void {
           passwordFormat: node.passwordFormat,
         });
       }
+    }
+
+    if (details.hasSession && details.isOnline && details.isConnectedToCurrentServer) {
+      syncWorkerScriptToConnectedHost(ns, neighbor);
     }
   }
 
@@ -264,12 +275,13 @@ export async function attemptAuthOnConnectedServers(
 ): Promise<{ changedState: boolean; changedCredentials: boolean; attempted: number }> {
   const { state } = context;
   const now = Date.now();
+  const unlimitedAttempts = maxAttempts <= 0;
   let attempted = 0;
   let changedState = false;
   let changedCredentials = false;
 
   for (const [hostname, node] of state.nodes.entries()) {
-    if (attempted >= maxAttempts) break;
+    if (!unlimitedAttempts && attempted >= maxAttempts) break;
     if (!canAttemptAuth(node, now)) continue;
 
     const result = await tryAuthenticateConnectedHost(context, hostname);
