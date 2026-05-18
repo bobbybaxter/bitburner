@@ -5,7 +5,10 @@ type CopyResult = {
   target: string;
 };
 
-const DARKNET_PASSWORD_PATHS = ['helpers/darknet/darknet-passwords.json', '/helpers/darknet/darknet-passwords.json'] as const;
+const DARKNET_PASSWORD_PATHS = [
+  'helpers/darknet/darknet-passwords.json',
+  '/helpers/darknet/darknet-passwords.json',
+] as const;
 const DARKNET_CACHE_REQUEST_PORT = 18;
 
 type SerializedDarknetPasswords = {
@@ -94,9 +97,7 @@ export async function main(ns: NS): Promise<void> {
   if (file.toLowerCase().endsWith('.cache')) {
     const queued = requestCacheOpenViaWorker(ns, host, file);
     if (!queued) {
-      ns.alert(
-        `Cache request port (${DARKNET_CACHE_REQUEST_PORT}) is full. Try again in a moment.`,
-      );
+      ns.alert(`Cache request port (${DARKNET_CACHE_REQUEST_PORT}) is full. Try again in a moment.`);
       return;
     }
     ns.alert(

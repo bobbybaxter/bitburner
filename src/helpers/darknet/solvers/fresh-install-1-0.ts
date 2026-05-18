@@ -22,7 +22,7 @@ function getDefaultCandidates(length: number, format: string): string[] {
 }
 
 export async function solveFreshInstall10(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   const expectedLength = details.passwordLength;
   const candidates = getDefaultCandidates(expectedLength, details.passwordFormat);
 
@@ -30,7 +30,7 @@ export async function solveFreshInstall10(ns: NS, hostname: DarknetHostname): Pr
     return {
       hostname,
       modelId: 'FreshInstall_1.0',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `No default-password candidates matched length ${expectedLength}`,
       shouldCaptureHeartbleed: true,
@@ -43,7 +43,7 @@ export async function solveFreshInstall10(ns: NS, hostname: DarknetHostname): Pr
       return {
         hostname,
         modelId: 'FreshInstall_1.0',
-        attempted: true,
+        guessed: true,
         success: true,
         password: candidate,
         message: result.message,
@@ -55,7 +55,7 @@ export async function solveFreshInstall10(ns: NS, hostname: DarknetHostname): Pr
   return {
     hostname,
     modelId: 'FreshInstall_1.0',
-    attempted: true,
+    guessed: true,
     success: false,
     message: `Tried ${candidates.length} default-password candidates with no match`,
     shouldCaptureHeartbleed: true,

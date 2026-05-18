@@ -6,16 +6,20 @@ const DARKNET_WORKER_SYNC_PORT = 17;
 const DARKNET_CACHE_REQUEST_PORT = 18;
 const CACHE_REQUEST_TTL_MS = 30_000;
 const HEARTBLEED_SAMPLE_COOLDOWN_MS = 60_000;
-const RATE_MY_PIX_ATTEMPTS_PER_PASS = 100;
-const FACTORI_OS_ATTEMPTS_PER_PASS = 100;
-const BIG_MO_OD_ATTEMPTS_PER_PASS = 100;
-const KING_OF_THE_HILL_ATTEMPTS_PER_PASS = 100;
-const NIL_ATTEMPTS_PER_PASS = 100;
-const TWO_G_ATTEMPTS_PER_PASS = 100;
-const ACCOUNTS_ATTEMPTS_PER_PASS = 100;
-const BELLA_RANGE_ATTEMPTS_PER_PASS = 100;
-const DEEP_GREEN_ATTEMPTS_PER_PASS = 100;
-const PR0VER_ATTEMPTS_PER_PASS = 100;
+const OPEN_CACHE_TASK_SCRIPT = '/helpers/darknet/task-open-cache.js';
+const HEARTBLEED_TASK_SCRIPT = '/helpers/darknet/task-heartbleed.js';
+const MEMORY_REALLOCATION_TASK_SCRIPT = '/helpers/darknet/task-memory-reallocation.js';
+const LABRADAR_TASK_SCRIPT = '/helpers/darknet/task-labradar.js';
+const RATE_MY_PIX_GUESSES_PER_PASS = 100;
+const FACTORI_OS_GUESSES_PER_PASS = 100;
+const BIG_MO_OD_GUESSES_PER_PASS = 100;
+const KING_OF_THE_HILL_GUESSES_PER_PASS = 100;
+const NIL_GUESSES_PER_PASS = 100;
+const TWO_G_GUESSES_PER_PASS = 100;
+const ACCOUNTS_GUESSES_PER_PASS = 100;
+const BELLA_RANGE_GUESSES_PER_PASS = 100;
+const DEEP_GREEN_GUESSES_PER_PASS = 100;
+const PR0VER_GUESSES_PER_PASS = 100;
 const NUMERIC_CHARSET = '0123456789';
 const ALPHANUMERIC_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const BASE_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -45,6 +49,8 @@ type ActiveWorkerLease = {
 type NilConstraintState = {
   knownByPos: (string | null)[];
   forbiddenByPos: string[][];
+  /** Last / next incremental guess for NIL (heartbleed yes/yesn't stepping). */
+  scratchGuess?: string | null;
 };
 
 type SharedProgressFile = {
@@ -74,6 +80,43 @@ const lastHeartbleedSampleByHost = new Map<string, number>();
 let cachedFreshVaultPasswords: PasswordVaultFile['passwords'] = {};
 let cachedFreshVaultAt = 0;
 const externallyKnownStalePasswords = new Map<string, Set<string>>();
+
+type TaskResult<T> = {
+  ok: boolean;
+  value?: T;
+  error?: string;
+};
+
+function launchLocalTask(ns: NS, script: string, ...args: (string | number | boolean)[]): number {
+  return ns.exec(
+    script,
+    ns.getHostname(),
+    {
+      threads: 1,
+      preventDuplicates: false,
+    },
+    ...args,
+  );
+}
+
+async function runLocalTaskAndReadResult<T>(
+  ns: NS,
+  script: string,
+  ...args: (string | number | boolean)[]
+): Promise<TaskResult<T>> {
+  const pid = launchLocalTask(ns, script, ...args);
+  if (pid <= 0) {
+    return { ok: false, error: `failed to exec ${script}` };
+  }
+  await ns.getPortHandle(pid).nextWrite();
+  const raw = ns.readPort(pid);
+  if (typeof raw !== 'string') return { ok: false, error: `invalid task output for ${script}` };
+  try {
+    return JSON.parse(raw) as TaskResult<T>;
+  } catch {
+    return { ok: false, error: `non-JSON task output for ${script}` };
+  }
+}
 
 function loadVault(ns: NS): PasswordVaultFile {
   const raw = ns.read(PASSWORDS_PATH).trim();
@@ -179,7 +222,7 @@ function clearSharedProgressOnHome(ns: NS, hostname: string): void {
 
 function getProgressFingerprint(
   modelId: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): WorkerProgressFingerprint {
   return {
     modelId,
@@ -192,7 +235,7 @@ function loadSharedProgress(
   ns: NS,
   hostname: string,
   modelId: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): SharedProgress {
   const empty: SharedProgress = { cursor: null, constraints: [], nilConstraints: null, activeWorker: null };
   const path = getSharedProgressPath(hostname);
@@ -271,6 +314,7 @@ function createNilConstraintState(length: number): NilConstraintState {
   return {
     knownByPos: Array.from({ length }, () => null),
     forbiddenByPos: Array.from({ length }, () => []),
+    scratchGuess: null,
   };
 }
 
@@ -281,43 +325,84 @@ function normalizeNilConstraintState(state: NilConstraintState | null, length: n
     const values = state.forbiddenByPos[idx] ?? [];
     return [...new Set(values)];
   });
-  return { knownByPos, forbiddenByPos };
+  const rawScratch = state.scratchGuess;
+  const scratchGuess = typeof rawScratch === 'string' && rawScratch.length === length ? rawScratch : null;
+  return { knownByPos, forbiddenByPos, scratchGuess };
 }
 
-// Strip every apostrophe-like character (ASCII ', curly ', U+2019, modifier letter U+02BC, backtick).
+// Strip every apostrophe-like character (ASCII ', curly ', U+2019, modifier letter U+02BC, backtick, fullwidth ').
 // The game renders "yesn't" with whichever apostrophe glyph is in fashion, and an exact-match against
 // the ASCII literal silently drops the whole feedback (no constraint learned) when the encodings
 // disagree. Normalize first, classify second.
 function stripApostrophes(token: string): string {
-  return token.replace(/[\u2018\u2019\u02BC'`\u00B4]/g, '');
+  return token.replace(/[\u2018\u2019\u02BC'`\u00B4\uFF07]/g, '');
+}
+
+const MAX_NIL_FEEDBACK_SOURCE_DEPTH = 10;
+
+/** Walk auth / API values: nested objects, JSON strings, and `data:` lines inside multi-line messages. */
+function collectNilFeedbackSources(data: unknown, depth = 0, acc: unknown[] = []): unknown[] {
+  if (depth > MAX_NIL_FEEDBACK_SOURCE_DEPTH || data == null) return acc;
+  acc.push(data);
+
+  if (typeof data === 'string') {
+    const t = data.trim();
+    if (t.startsWith('{') && t.endsWith('}')) {
+      try {
+        collectNilFeedbackSources(JSON.parse(t) as unknown, depth + 1, acc);
+      } catch {
+        /* keep raw string */
+      }
+    }
+    const dataLine = /\bdata:\s*([^\r\n]+)/im.exec(t);
+    if (dataLine) acc.push(dataLine[1].trim());
+    return acc;
+  }
+
+  if (Array.isArray(data)) {
+    if (data.every((e) => typeof e === 'string')) acc.push((data as string[]).join(','));
+    return acc;
+  }
+
+  if (typeof data === 'object' && !Array.isArray(data)) {
+    for (const v of Object.values(data as Record<string, unknown>)) {
+      if (v !== undefined) collectNilFeedbackSources(v, depth + 1, acc);
+    }
+  }
+  return acc;
 }
 
 function parseNilFeedback(data: unknown): ('yes' | "yesn't")[] | null {
-  let rawTokens: string[] | null = null;
-  if (typeof data === 'string') {
-    rawTokens = data.split(',');
-  } else if (Array.isArray(data) && data.every((entry) => typeof entry === 'string')) {
-    rawTokens = data as string[];
-  }
-  if (rawTokens == null) return null;
-
-  const tokens = rawTokens.map((token) => token.trim().toLowerCase()).filter((token) => token.length > 0);
-  if (tokens.length === 0) return null;
-
-  const normalized: ('yes' | "yesn't")[] = [];
-  for (const token of tokens) {
-    if (token === 'yes') {
-      normalized.push('yes');
-      continue;
+  for (const src of collectNilFeedbackSources(data)) {
+    let rawTokens: string[] | null = null;
+    if (typeof src === 'string') {
+      rawTokens = src.split(',');
+    } else if (Array.isArray(src) && src.every((entry) => typeof entry === 'string')) {
+      rawTokens = src as string[];
     }
-    const stripped = stripApostrophes(token);
-    if (stripped === 'yesnt' || stripped === 'no') {
-      normalized.push("yesn't");
-      continue;
+    if (rawTokens == null) continue;
+
+    const tokens = rawTokens.map((token) => token.trim().toLowerCase()).filter((token) => token.length > 0);
+    if (tokens.length === 0) continue;
+
+    const normalized: ('yes' | "yesn't")[] = [];
+    let ok = true;
+    for (const token of tokens) {
+      if (token === 'yes') {
+        normalized.push('yes');
+        continue;
+      }
+      const stripped = stripApostrophes(token);
+      if (stripped === 'yesnt' || stripped === 'no') {
+        normalized.push("yesn't");
+        continue;
+      }
+      ok = false;
+      break;
     }
-    return null;
+    if (ok && normalized.length > 0) return normalized;
   }
-  return normalized;
+  return null;
 }
 
 function applyNilFeedback(state: NilConstraintState, guess: string, feedback: ('yes' | "yesn't")[]): boolean {
@@ -350,6 +435,169 @@ function isNilCandidateConsistent(candidate: string, state: NilConstraintState):
   return true;
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Heartbleed may log JSON (`"passwordAttempted":"00000"`) or plaintext key: value lines. */
+function extractNilDataLineForGuessFromLogChunk(chunk: string, guess: string): string | null {
+  const trimmed = chunk.trim();
+  if (trimmed.length === 0) return null;
+
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const obj = JSON.parse(trimmed) as Record<string, unknown>;
+      const att = obj.passwordAttempted;
+      if (String(att) !== guess) return null;
+      const d = obj.data;
+      if (typeof d === 'string') return d;
+      if (Array.isArray(d) && d.every((x) => typeof x === 'string')) return d.join(',');
+    } catch {
+      /* fall through to plaintext / quoted-json patterns */
+    }
+  }
+
+  const esc = escapeRegExp(guess);
+  const mentionsAttempt = new RegExp(
+    `(?:passwordAttempted|"passwordAttempted")\\s*:\\s*"?${esc}"?(?:\\s|$|\\r|\\n|,|\\})`,
+    'i',
+  ).test(trimmed);
+  if (!mentionsAttempt) return null;
+
+  const plain = /\bdata:\s*([^\r\n]+)/i.exec(trimmed);
+  if (plain) return plain[1].trim();
+
+  const quoted = /"data"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(trimmed);
+  if (quoted) {
+    try {
+      return JSON.parse(`"${quoted[1]}"`) as string;
+    } catch {
+      return quoted[1].replace(/\\"/g, '"');
+    }
+  }
+  return null;
+}
+
+function findNilDataForGuessInHeartbleedLogs(logs: unknown, guess: string): string | null {
+  if (!Array.isArray(logs)) return null;
+  const esc = escapeRegExp(guess);
+
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const got = extractNilDataLineForGuessFromLogChunk(String(logs[i]), guess);
+    if (got != null) return got;
+  }
+
+  const lines: string[] = [];
+  for (const entry of logs) {
+    for (const line of String(entry).split(/\r?\n/)) {
+      const t = line.trim();
+      if (t.length > 0) lines.push(t);
+    }
+  }
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const got = extractNilDataLineForGuessFromLogChunk(lines[i], guess);
+    if (got != null) return got;
+  }
+
+  const text = logs.map((x) => String(x)).join('\n');
+  const re1 = new RegExp(
+    `(?:^|[\\r\\n])data:\\s*([^\\r\\n]+)[\\s\\S]*?(?:passwordAttempted|"passwordAttempted")\\s*:\\s*"?${esc}"?(?:\\s|$|[\\r\\n])`,
+    'im',
+  );
+  let m = re1.exec(text);
+  if (m) return m[1].trim();
+  const re2 = new RegExp(
+    `(?:^|[\\r\\n])(?:passwordAttempted|"passwordAttempted")\\s*:\\s*"?${esc}"?(?:\\s|$|[\\r\\n])[\\s\\S]*?data:\\s*([^\\r\\n]+)`,
+    'im',
+  );
+  m = re2.exec(text);
+  if (m) return m[1].trim();
+  return null;
+}
+
+async function fetchNilFeedback(
+  ns: NS,
+  host: string,
+  guess: string,
+  authResult: unknown,
+): Promise<('yes' | "yesn't")[] | null> {
+  const fromAuth = parseNilFeedback(authResult);
+  if (fromAuth != null && fromAuth.length === guess.length) return fromAuth;
+
+  try {
+    const bleed = await ns.dnet.heartbleed(host, { peek: true, logsToCapture: 40 });
+    const dataLine = findNilDataForGuessInHeartbleedLogs(bleed.logs, guess);
+    if (dataLine == null) return fromAuth;
+    const fromBleed = parseNilFeedback(dataLine);
+    if (fromBleed != null && fromBleed.length === guess.length) return fromBleed;
+    return fromAuth;
+  } catch {
+    return fromAuth;
+  }
+}
+
+/**
+ * Advance each `yesn't` slot by one in `charset` (wrap at the end).
+ * When wrapping from the last charset symbol back to the first (e.g. 9→0 for numeric),
+ * clear that slot's `forbiddenByPos` if still unknown so multi-worker merges cannot leave
+ * every digit forbidden and stall the lap; the next lap re-tries 0..9 for that slot.
+ */
+function advanceNilWrongSlots(
+  candidate: string,
+  feedback: ('yes' | "yesn't")[],
+  charset: string,
+  nilState: NilConstraintState | null = null,
+): string {
+  const base = charset.length;
+  const lastIdx = base - 1;
+  const out = [...candidate];
+  const n = Math.min(out.length, feedback.length);
+  for (let i = 0; i < n; i++) {
+    if (feedback[i] === 'yes') continue;
+    const idx = charset.indexOf(out[i]);
+    const cur = idx >= 0 ? idx : 0;
+    if (cur === lastIdx && nilState != null && nilState.knownByPos[i] == null) {
+      nilState.forbiddenByPos[i] = [];
+    }
+    out[i] = charset[(cur + 1) % base];
+  }
+  return out.join('');
+}
+
+function reconcileNilScratchGuess(
+  candidate: string,
+  state: NilConstraintState,
+  charset: string,
+  passwordLength: number,
+): string {
+  const first = charset[0];
+  const chars = [...candidate];
+  while (chars.length < passwordLength) chars.push(first);
+  if (chars.length > passwordLength) chars.length = passwordLength;
+
+  for (let i = 0; i < passwordLength; i++) {
+    const known = state.knownByPos[i];
+    if (known != null) chars[i] = known;
+  }
+
+  for (let i = 0; i < passwordLength; i++) {
+    if (state.knownByPos[i] != null) continue;
+    const forbidden = new Set(state.forbiddenByPos[i]);
+    if (!forbidden.has(chars[i])) continue;
+    let replaced = false;
+    for (let step = 0; step < charset.length; step++) {
+      const ch = charset[step];
+      if (!forbidden.has(ch)) {
+        chars[i] = ch;
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) chars[i] = first;
+  }
+  return chars.join('');
+}
+
 function emitWorkerMessage(ns: NS, payload: unknown): void {
   ns.tryWritePort(DARKNET_WORKER_SYNC_PORT, payload);
 }
@@ -358,11 +606,8 @@ function openLocalCaches(ns: NS): void {
   const host = ns.getHostname();
   const caches = ns.ls(host, '.cache');
   for (const file of caches) {
-    try {
-      ns.dnet.openCache(file, false);
-    } catch {
-      // Cache may have just been opened by another pass; ignore.
-    }
+    // Fire-and-forget: cache opening should never stall solver loops.
+    launchLocalTask(ns, OPEN_CACHE_TASK_SCRIPT, file);
   }
 }
 
@@ -399,11 +644,8 @@ function processCacheOpenRequests(ns: NS): void {
 
     if (head.hostname === myHost) {
       ns.readPort(DARKNET_CACHE_REQUEST_PORT);
-      try {
-        ns.dnet.openCache(head.file, false);
-      } catch {
-        // Cache may have moved/expired; ignore so other workers aren't blocked.
-      }
+      // Fire-and-forget so port queue drain stays quick.
+      launchLocalTask(ns, OPEN_CACHE_TASK_SCRIPT, head.file);
       continue;
     }
 
@@ -420,7 +662,7 @@ function emitProgressUpdate(
   ns: NS,
   hostname: string,
   modelId: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
   cursor: string,
   options?: {
     constraints?: MastermindConstraint[];
@@ -477,12 +719,22 @@ function emitPasswordFound(ns: NS, hostname: string, modelId: string, password: 
   });
 }
 
-function emitPasswordStale(ns: NS, hostname: string, attemptedPassword: string): void {
+function emitPasswordStale(ns: NS, hostname: string, guessedPassword: string): void {
   emitWorkerMessage(ns, {
     kind: 'password-stale',
     hostname,
-    attemptedPassword,
+    guessedPassword,
     sourceHost: ns.getHostname(),
+    ts: Date.now(),
+  });
+}
+
+/** Reports this host's neighbor list to home so the daemon can fill in mesh edges in saved state. */
+function emitEdges(ns: NS, neighbors: string[]): void {
+  emitWorkerMessage(ns, {
+    kind: 'edges',
+    hostname: ns.getHostname(),
+    neighbors,
     ts: Date.now(),
   });
 }
@@ -514,24 +766,21 @@ async function tryShortCircuitFromVault(ns: NS, host: string, modelId: string): 
 async function maybeSampleHeartbleed(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string[] | null> {
   if (details.hasSession) return null;
   const now = Date.now();
   const lastSampleAt = lastHeartbleedSampleByHost.get(host) ?? 0;
   if (now - lastSampleAt < HEARTBLEED_SAMPLE_COOLDOWN_MS) return null;
-  try {
-    const result = await ns.dnet.heartbleed(host, {
-      peek: true,
-      logsToCapture: HEARTBLEED_LOGS_TO_CAPTURE,
-    });
-    lastHeartbleedSampleByHost.set(host, now);
-    return Array.isArray(result?.logs) ? result.logs : [];
-  } catch {
-    // Some targets reject heartbleed (e.g. required charisma above ours); back off until cooldown.
-    lastHeartbleedSampleByHost.set(host, now);
-    return null;
-  }
+  const result = await runLocalTaskAndReadResult<{ logs?: string[] }>(
+    ns,
+    HEARTBLEED_TASK_SCRIPT,
+    host,
+    HEARTBLEED_LOGS_TO_CAPTURE,
+  );
+  lastHeartbleedSampleByHost.set(host, now);
+  if (!result.ok) return null;
+  return Array.isArray(result.value?.logs) ? result.value.logs : [];
 }
 
 // Heartbleed log lines like:
@@ -640,7 +889,7 @@ function toBaseNFixed(index: bigint, length: number, charset: string): string {
 async function tryPr0verFl0(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordFormat !== 'alphanumeric' || details.passwordLength <= 0) return null;
   const myHost = ns.getHostname();
@@ -660,7 +909,7 @@ async function tryPr0verFl0(
     }
   }
   if (start < 0n || start >= total) start = 0n;
-  const stop = start + BigInt(PR0VER_ATTEMPTS_PER_PASS) > total ? total : start + BigInt(PR0VER_ATTEMPTS_PER_PASS);
+  const stop = start + BigInt(PR0VER_GUESSES_PER_PASS) > total ? total : start + BigInt(PR0VER_GUESSES_PER_PASS);
 
   for (let i = start; i < stop; i++) {
     const short = await tryShortCircuitFromVault(ns, host, 'Pr0verFl0');
@@ -682,7 +931,7 @@ async function tryPr0verFl0(
 async function tryDeepGreen(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordLength <= 0) return null;
   const charset =
@@ -722,10 +971,10 @@ async function tryDeepGreen(
   });
 
   let cursor = start;
-  let attempted = 0;
+  let guessed = 0;
   let cracked: string | null = null;
 
-  while (cursor < total && attempted < DEEP_GREEN_ATTEMPTS_PER_PASS) {
+  while (cursor < total && guessed < DEEP_GREEN_GUESSES_PER_PASS) {
     const short = await tryShortCircuitFromVault(ns, host, 'DeepGreen');
     if (short != null) return short;
 
@@ -734,7 +983,7 @@ async function tryDeepGreen(
 
     if (!isCandidateConsistent(candidate, constraints)) continue;
 
-    attempted += 1;
+    guessed += 1;
     const auth = await ns.dnet.authenticate(host, candidate);
     if (auth.success) {
       cracked = candidate;
@@ -772,7 +1021,7 @@ async function tryDeepGreen(
 async function try2GCellular(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordLength <= 0) return null;
   const charset =
@@ -799,7 +1048,7 @@ async function try2GCellular(
     }
   }
   if (start < 0n || start >= total) start = 0n;
-  const stop = start + BigInt(TWO_G_ATTEMPTS_PER_PASS) > total ? total : start + BigInt(TWO_G_ATTEMPTS_PER_PASS);
+  const stop = start + BigInt(TWO_G_GUESSES_PER_PASS) > total ? total : start + BigInt(TWO_G_GUESSES_PER_PASS);
 
   for (let i = start; i < stop; i++) {
     const short = await tryShortCircuitFromVault(ns, host, '2G_cellular');
@@ -821,7 +1070,7 @@ async function try2GCellular(
 async function tryBellaCuoreRange(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordFormat !== 'numeric' || details.passwordLength <= 0) return null;
   const tokens = (details.data ?? '')
@@ -856,7 +1105,7 @@ async function tryBellaCuoreRange(
   let start = raw == null ? min : Number.parseInt(raw, 10);
   if (!Number.isFinite(start)) start = min;
   if (start < min || start > max) start = min;
-  const stop = Math.min(max + 1, start + BELLA_RANGE_ATTEMPTS_PER_PASS);
+  const stop = Math.min(max + 1, start + BELLA_RANGE_GUESSES_PER_PASS);
 
   for (let n = start; n < stop; n++) {
     const short = await tryShortCircuitFromVault(ns, host, 'BellaCuore');
@@ -879,7 +1128,7 @@ async function tryBellaCuoreRange(
 async function tryAccountsManager42(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordFormat !== 'numeric' || details.passwordLength <= 0) return null;
   const myHost = ns.getHostname();
@@ -893,7 +1142,7 @@ async function tryAccountsManager42(
   let start = raw == null ? 0 : Number.parseInt(raw, 10);
   if (!Number.isFinite(start)) start = 0;
   if (start < 0 || start >= maxValue) start = 0;
-  const stop = Math.min(maxValue, start + ACCOUNTS_ATTEMPTS_PER_PASS);
+  const stop = Math.min(maxValue, start + ACCOUNTS_GUESSES_PER_PASS);
 
   for (let n = start; n < stop; n++) {
     const short = await tryShortCircuitFromVault(ns, host, 'AccountsManager_4.2');
@@ -915,7 +1164,7 @@ async function tryAccountsManager42(
 async function tryNIL(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordLength <= 0) return null;
   const charset =
@@ -933,53 +1182,65 @@ async function tryNIL(
   const lease: ActiveWorkerLease = { sourceHost: myHost, since: now };
   const nilConstraints = normalizeNilConstraintState(progress.nilConstraints, details.passwordLength);
 
-  const total = powBigInt(BigInt(charset.length), details.passwordLength);
-  let start = 0n;
-  if (progress.cursor != null) {
-    try {
-      start = BigInt(progress.cursor);
-    } catch {
-      start = 0n;
-    }
-  }
-  if (start < 0n || start >= total) start = 0n;
-  // Publish lease + current NIL constraints early so peers can immediately back off and share clues.
-  emitProgressUpdate(ns, host, 'NIL', details, start.toString(), {
+  const len = details.passwordLength;
+  const scratchRaw = nilConstraints.scratchGuess;
+  const validScratch =
+    scratchRaw != null && scratchRaw.length === len && [...scratchRaw].every((c) => charset.includes(c));
+  let candidate = reconcileNilScratchGuess(
+    validScratch ? scratchRaw : charset[0].repeat(len),
+    nilConstraints,
+    charset,
+    len,
+  );
+
+  emitProgressUpdate(ns, host, 'NIL', details, candidate, {
     nilConstraints,
     activeWorker: lease,
   });
 
-  // Count actual authenticate attempts (not raw cursor steps); skipped-by-constraint candidates are
-  // free to scan since they don't burn an `authenticate` call. Without this, the per-pass attempt
-  // budget gets eaten by `continue`s and the solver crawls once constraints prune most of the space.
-  let cursor = start;
-  let attempted = 0;
-  while (cursor < total && attempted < NIL_ATTEMPTS_PER_PASS) {
+  let guessed = 0;
+  while (guessed < NIL_GUESSES_PER_PASS) {
     const short = await tryShortCircuitFromVault(ns, host, 'NIL');
     if (short != null) return short;
 
-    const candidate = toBaseNFixed(cursor, details.passwordLength, charset);
-    cursor += 1n;
+    candidate = reconcileNilScratchGuess(candidate, nilConstraints, charset, len);
+    if (!isNilCandidateConsistent(candidate, nilConstraints)) {
+      emitProgressUpdate(ns, host, 'NIL', details, candidate, {
+        nilConstraints,
+        activeWorker: { ...lease, since: Date.now() },
+      });
+      return null;
+    }
 
-    if (!isNilCandidateConsistent(candidate, nilConstraints)) continue;
-    attempted += 1;
-
+    guessed += 1;
     const auth = await ns.dnet.authenticate(host, candidate);
     if (auth.success) {
       emitProgressClear(ns, host, 'NIL');
       return candidate;
     }
-    const feedback = parseNilFeedback(auth.data);
-    if (feedback && applyNilFeedback(nilConstraints, candidate, feedback)) {
-      // Publish updated constraints as soon as they change to reduce stale NIL guesses across workers.
-      emitProgressUpdate(ns, host, 'NIL', details, cursor.toString(), {
+
+    const feedback = await fetchNilFeedback(ns, host, candidate, auth);
+    if (feedback == null || feedback.length !== candidate.length) {
+      nilConstraints.scratchGuess = candidate;
+      emitProgressUpdate(ns, host, 'NIL', details, candidate, {
         nilConstraints,
         activeWorker: { ...lease, since: Date.now() },
       });
+      return null;
     }
+
+    applyNilFeedback(nilConstraints, candidate, feedback);
+    const advanced = advanceNilWrongSlots(candidate, feedback, charset, nilConstraints);
+    nilConstraints.scratchGuess = reconcileNilScratchGuess(advanced, nilConstraints, charset, len);
+    candidate = nilConstraints.scratchGuess;
+
+    emitProgressUpdate(ns, host, 'NIL', details, candidate, {
+      nilConstraints,
+      activeWorker: { ...lease, since: Date.now() },
+    });
   }
 
-  emitProgressUpdate(ns, host, 'NIL', details, cursor >= total ? '0' : cursor.toString(), {
+  emitProgressUpdate(ns, host, 'NIL', details, candidate, {
     nilConstraints,
     activeWorker: { ...lease, since: Date.now() },
   });
@@ -989,7 +1250,7 @@ async function tryNIL(
 async function tryRateMyPixAuth(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordLength <= 0) return null;
   const charset =
@@ -1017,7 +1278,7 @@ async function tryRateMyPixAuth(
   }
   if (start < 0n || start >= total) start = 0n;
   const stop =
-    start + BigInt(RATE_MY_PIX_ATTEMPTS_PER_PASS) > total ? total : start + BigInt(RATE_MY_PIX_ATTEMPTS_PER_PASS);
+    start + BigInt(RATE_MY_PIX_GUESSES_PER_PASS) > total ? total : start + BigInt(RATE_MY_PIX_GUESSES_PER_PASS);
 
   for (let i = start; i < stop; i++) {
     const short = await tryShortCircuitFromVault(ns, host, 'RateMyPix.Auth');
@@ -1039,7 +1300,7 @@ async function tryRateMyPixAuth(
 async function tryFactoriOs(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordFormat !== 'numeric' || details.passwordLength <= 0) return null;
   const myHost = ns.getHostname();
@@ -1053,7 +1314,7 @@ async function tryFactoriOs(
   let start = raw == null ? 0 : Number.parseInt(raw, 10);
   if (!Number.isFinite(start)) start = 0;
   if (start < 0 || start >= maxValue) start = 0;
-  const stop = Math.min(maxValue, start + FACTORI_OS_ATTEMPTS_PER_PASS);
+  const stop = Math.min(maxValue, start + FACTORI_OS_GUESSES_PER_PASS);
 
   for (let n = start; n < stop; n++) {
     const short = await tryShortCircuitFromVault(ns, host, 'Factori-Os');
@@ -1075,7 +1336,7 @@ async function tryFactoriOs(
 async function tryBigMoOd(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordFormat !== 'numeric' || details.passwordLength <= 0) return null;
   const myHost = ns.getHostname();
@@ -1089,7 +1350,7 @@ async function tryBigMoOd(
   let start = raw == null ? 0 : Number.parseInt(raw, 10);
   if (!Number.isFinite(start)) start = 0;
   if (start < 0 || start >= maxValue) start = 0;
-  const stop = Math.min(maxValue, start + BIG_MO_OD_ATTEMPTS_PER_PASS);
+  const stop = Math.min(maxValue, start + BIG_MO_OD_GUESSES_PER_PASS);
 
   for (let n = start; n < stop; n++) {
     const short = await tryShortCircuitFromVault(ns, host, 'BigMo%od');
@@ -1111,7 +1372,7 @@ async function tryBigMoOd(
 async function tryKingOfTheHill(
   ns: NS,
   host: string,
-  details: ReturnType<NS['dnet']['getServerAuthDetails']>,
+  details: ReturnType<NS['dnet']['getServerDetails']>,
 ): Promise<string | null> {
   if (details.passwordFormat !== 'numeric' || details.passwordLength <= 0) return null;
   const myHost = ns.getHostname();
@@ -1125,7 +1386,7 @@ async function tryKingOfTheHill(
   let start = raw == null ? 0 : Number.parseInt(raw, 10);
   if (!Number.isFinite(start)) start = 0;
   if (start < 0 || start >= maxValue) start = 0;
-  const stop = Math.min(maxValue, start + KING_OF_THE_HILL_ATTEMPTS_PER_PASS);
+  const stop = Math.min(maxValue, start + KING_OF_THE_HILL_GUESSES_PER_PASS);
 
   for (let n = start; n < stop; n++) {
     const short = await tryShortCircuitFromVault(ns, host, 'KingOfTheHill');
@@ -1529,7 +1790,7 @@ function inferPr0verFl0Candidates(): string[] {
   return [];
 }
 
-function getCandidatePasswords(modelId: string, details: ReturnType<NS['dnet']['getServerAuthDetails']>): string[] {
+function getCandidatePasswords(modelId: string, details: ReturnType<NS['dnet']['getServerDetails']>): string[] {
   if (modelId === 'ZeroLogon') return [''];
   if (modelId === 'DeskMemo_3.1' && details.passwordFormat === 'numeric') {
     const pin = inferDeskMemoPin(details.passwordHint, details.passwordLength);
@@ -1619,9 +1880,10 @@ export async function main(ns: NS): Promise<void> {
 
     const vault = loadVault(ns);
     const neighbors = ns.dnet.probe();
+    emitEdges(ns, neighbors);
 
     for (const host of neighbors) {
-      const details = ns.dnet.getServerAuthDetails(host);
+      const details = ns.dnet.getServerDetails(host);
       if (!details.isOnline || !details.isConnectedToCurrentServer) continue;
 
       if (!details.hasSession) {
@@ -1639,7 +1901,7 @@ export async function main(ns: NS): Promise<void> {
 
       // Heartbleed log scraping happens before the brute-force chain so the worker can short-circuit if
       // the target's logs leak a passcode (or a neighbor's) we can use directly.
-      const preExtractDetails = ns.dnet.getServerAuthDetails(host);
+      const preExtractDetails = ns.dnet.getServerDetails(host);
       if (!preExtractDetails.hasSession) {
         const heartbleedLogs = await maybeSampleHeartbleed(ns, host, preExtractDetails);
         if (heartbleedLogs && heartbleedLogs.length > 0) {
@@ -1650,7 +1912,7 @@ export async function main(ns: NS): Promise<void> {
         }
       }
 
-      const refreshed = ns.dnet.getServerAuthDetails(host);
+      const refreshed = ns.dnet.getServerDetails(host);
       if (!refreshed.hasSession) {
         if (refreshed.modelId === 'KingOfTheHill') {
           const cracked = await tryKingOfTheHill(ns, host, refreshed);
@@ -1747,12 +2009,12 @@ export async function main(ns: NS): Promise<void> {
         }
       }
 
-      const deployDetails = ns.dnet.getServerAuthDetails(host);
+      const deployDetails = ns.dnet.getServerDetails(host);
       if (!deployDetails.hasSession || !deployDetails.isConnectedToCurrentServer || !deployDetails.isOnline) continue;
 
       const blockedRam = ns.dnet.getBlockedRam(host);
       if (blockedRam > 0) {
-        await ns.dnet.memoryReallocation(host);
+        await runLocalTaskAndReadResult(ns, MEMORY_REALLOCATION_TASK_SCRIPT, host);
         // Prioritize unblocking owner RAM before any other host actions.
         continue;
       }
@@ -1763,7 +2025,11 @@ export async function main(ns: NS): Promise<void> {
       const workerArgs = ['--interval', Math.max(500, Math.floor(flags.interval)), '--noTail'] as const;
       if (ns.isRunning(script, host, ...workerArgs)) continue;
 
-      ns.scp(script, host, ns.getHostname());
+      ns.scp(
+        [script, OPEN_CACHE_TASK_SCRIPT, HEARTBLEED_TASK_SCRIPT, MEMORY_REALLOCATION_TASK_SCRIPT, LABRADAR_TASK_SCRIPT],
+        host,
+        ns.getHostname(),
+      );
       ns.exec(
         script,
         host,

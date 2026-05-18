@@ -58,7 +58,24 @@ function deserializeState(serialized: SerializedDarknetState): DarknetState {
     state.revisitQueue.add(hostname);
   }
 
+  symmetrizeDarknetEdges(state);
   return state;
+}
+
+/** Ensure every edge is bidirectional so BFS from darkweb can traverse the mesh. */
+export function symmetrizeDarknetEdges(state: DarknetState): void {
+  const pairs: Array<[DarknetHostname, DarknetHostname]> = [];
+  for (const [hostname, neighbors] of state.edges.entries()) {
+    for (const n of neighbors) {
+      pairs.push([hostname, n]);
+    }
+  }
+  for (const [a, b] of pairs) {
+    if (!state.edges.has(a)) state.edges.set(a, new Set());
+    if (!state.edges.has(b)) state.edges.set(b, new Set());
+    state.edges.get(a)!.add(b);
+    state.edges.get(b)!.add(a);
+  }
 }
 
 export function loadDarknetState(ns: NS, statePath = DARKNET_STATE_PATH): DarknetState {

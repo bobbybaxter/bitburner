@@ -25,10 +25,11 @@
  * With **no positional arguments** (optional `--debug` only), the script prompts for a joined faction that still
  * sells augmentations you do not have (`ns.getResetInfo().ownedAugs`), then a reputation target from the remaining aug
  * rep requirements. The infiltratable **company location** is chosen automatically from `getPossibleLocations()` /
- * `getInfiltration()` (see {@link pickAutoInfiltrationLocation}).
+ * `getInfiltration()` (see {@link pickAutoInfiltrationLocation}; v3+ UI bar ≈ `difficulty × (100/3.5)` vs API).
  */
 
 import type { FactionName, NS } from '@ns';
+import { INFILTRATION_API_DIFFICULTY_AT_UI_100, toInfiltrationUiDifficulty } from '/helpers/infiltration-difficulty.js';
 import { parseShortNumber } from '/helpers/stockmaster/parse-short-number.js';
 import { formatNumberShort } from './helpers/gangs/helpers';
 
@@ -367,7 +368,7 @@ async function ensureInfiltrationFactionDropdown(
 
   log?.(`faction dropdown: want "${faction}", trigger shows "${currentLabel}" (opening menu…)`);
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let guess = 0; guess < 3; guess++) {
     clickReactOrDom(trigger);
 
     let listbox: HTMLElement | null = null;
@@ -380,14 +381,14 @@ async function ensureInfiltrationFactionDropdown(
       }
     }
     if (!listbox) {
-      log?.(`faction dropdown: attempt ${attempt + 1}/3 — no listbox/options after opening (aria-controls / portal?)`);
+      log?.(`faction dropdown: attempt ${guess + 1}/3 — no listbox/options after opening (aria-controls / portal?)`);
       continue;
     }
 
     const options = [...listbox.querySelectorAll('[role="option"], .MuiMenuItem-root')] as HTMLElement[];
     const optionLabels = options.map((o) => collapseWs(o.textContent ?? '').slice(0, 64));
     log?.(
-      `faction dropdown: attempt ${attempt + 1}/3 — ${options.length} option(s): ${optionLabels.join(' · ') || '(empty)'}`,
+      `faction dropdown: attempt ${guess + 1}/3 — ${options.length} option(s): ${optionLabels.join(' · ') || '(empty)'}`,
     );
 
     const wantCollapsed = normalize(collapseWs(faction));
@@ -464,7 +465,8 @@ function buildFactionUnownedAugLists(ns: NS): Map<FactionName, UnownedFactionAug
   return out;
 }
 
-const MAX_AUTO_INFILTRATION_DIFFICULTY = 3.5;
+/** Auto-pick only venues at or below ~100 on the v3 UI-equivalent bar; see `helpers/infiltration-difficulty.ts`. */
+const MAX_AUTO_INFILTRATION_API_DIFFICULTY = INFILTRATION_API_DIFFICULTY_AT_UI_100;
 
 type InfilVenueCandidate = { name: string; city: string; tradeRep: number; difficulty: number };
 
@@ -501,13 +503,14 @@ function pickAutoInfiltrationLocation(ns: NS, faction: FactionName, targetRep: n
       difficulty: infil.difficulty,
     };
   });
-  const candidates = allCandidates.filter((c) => c.difficulty <= MAX_AUTO_INFILTRATION_DIFFICULTY);
+  const candidates = allCandidates.filter((c) => c.difficulty <= MAX_AUTO_INFILTRATION_API_DIFFICULTY);
   if (candidates.length === 0) {
     const easiest = allCandidates.reduce((a, b) => (a.difficulty <= b.difficulty ? a : b));
+    const easiestUi = toInfiltrationUiDifficulty(easiest.difficulty);
     ns.tprint(
-      `Cannot auto-pick an infiltratable venue: all available options are above difficulty ` +
-        `${MAX_AUTO_INFILTRATION_DIFFICULTY.toFixed(1)} (NS "Impossible" threshold). Easiest currently is ` +
-        `"${easiest.name}" in ${easiest.city} at ${easiest.difficulty.toFixed(3)}.`,
+      `Cannot auto-pick an infiltratable venue: all available options are above API difficulty ` +
+        `${MAX_AUTO_INFILTRATION_API_DIFFICULTY.toFixed(2)} (~${toInfiltrationUiDifficulty(MAX_AUTO_INFILTRATION_API_DIFFICULTY).toFixed(0)} on the infiltration UI bar). Easiest currently is ` +
+        `"${easiest.name}" in ${easiest.city} at API ${easiest.difficulty.toFixed(3)} (~${easiestUi.toFixed(1)} UI).`,
     );
     return null;
   }

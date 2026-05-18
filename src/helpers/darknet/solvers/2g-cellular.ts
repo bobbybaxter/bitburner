@@ -3,7 +3,7 @@ import type { DarknetSolverResult } from '/helpers/darknet/solvers/types.js';
 import type { DarknetHostname } from '/helpers/darknet/types.js';
 
 const PROGRESS_FILE = '/helpers/darknet/2g-cellular-progress.json';
-const ATTEMPTS_PER_PASS = 250;
+const GUESSES_PER_PASS = 250;
 const NUMERIC_CHARSET = '0123456789';
 const ALPHANUMERIC_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -44,12 +44,12 @@ function toBaseNFixed(index: bigint, length: number, charset: string): string {
 }
 
 export async function solve2GCellular(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   if (details.passwordLength <= 0) {
     return {
       hostname,
       modelId: '2G_cellular',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Invalid password length ${details.passwordLength}`,
       shouldCaptureHeartbleed: true,
@@ -66,7 +66,7 @@ export async function solve2GCellular(ns: NS, hostname: DarknetHostname): Promis
     return {
       hostname,
       modelId: '2G_cellular',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Unexpected format ${details.passwordFormat}; expected numeric/alphanumeric`,
       shouldCaptureHeartbleed: true,
@@ -85,7 +85,7 @@ export async function solve2GCellular(ns: NS, hostname: DarknetHostname): Promis
     }
   }
   if (start < 0n || start >= total) start = 0n;
-  const stop = start + BigInt(ATTEMPTS_PER_PASS) > total ? total : start + BigInt(ATTEMPTS_PER_PASS);
+  const stop = start + BigInt(GUESSES_PER_PASS) > total ? total : start + BigInt(GUESSES_PER_PASS);
 
   for (let i = start; i < stop; i++) {
     const candidate = toBaseNFixed(i, details.passwordLength, charset);
@@ -96,7 +96,7 @@ export async function solve2GCellular(ns: NS, hostname: DarknetHostname): Promis
       return {
         hostname,
         modelId: '2G_cellular',
-        attempted: true,
+        guessed: true,
         success: true,
         password: candidate,
         message: result.message,
@@ -110,7 +110,7 @@ export async function solve2GCellular(ns: NS, hostname: DarknetHostname): Promis
   return {
     hostname,
     modelId: '2G_cellular',
-    attempted: true,
+    guessed: true,
     success: false,
     message: `Bruteforced ${details.passwordFormat} range [${start.toString()}, ${stop.toString()}) of ${total.toString()}`,
     shouldCaptureHeartbleed: true,

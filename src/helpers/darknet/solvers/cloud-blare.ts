@@ -9,14 +9,14 @@ function inferCloudBlareCode(data: string, expectedLength: number): string | nul
 }
 
 export async function solveCloudBlare(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   const expectedLength = details.passwordLength;
 
   if (details.passwordFormat !== 'numeric' || expectedLength <= 0) {
     return {
       hostname,
       modelId: 'CloudBlare(tm)',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Unexpected format/length: ${details.passwordFormat}/${expectedLength}`,
       shouldCaptureHeartbleed: true,
@@ -28,7 +28,7 @@ export async function solveCloudBlare(ns: NS, hostname: DarknetHostname): Promis
     return {
       hostname,
       modelId: 'CloudBlare(tm)',
-      attempted: false,
+      guessed: false,
       success: false,
       message: 'Could not infer numeric code from data payload',
       shouldCaptureHeartbleed: true,
@@ -39,7 +39,7 @@ export async function solveCloudBlare(ns: NS, hostname: DarknetHostname): Promis
   return {
     hostname,
     modelId: 'CloudBlare(tm)',
-    attempted: true,
+    guessed: true,
     success: result.success,
     password: result.success ? password : undefined,
     message: result.message,

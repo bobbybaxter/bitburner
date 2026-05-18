@@ -105,4 +105,3 @@ export async function main(ns: NS): Promise<void> {
 export function autocomplete(): string[] {
   return ['--top', '--tail'];
 }
-

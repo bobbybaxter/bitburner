@@ -34,13 +34,13 @@ function buildUniquePermutations(sortedToken: string): string[] {
 }
 
 export async function solvePhp54(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
 
   if (details.passwordFormat !== 'numeric' || details.passwordLength <= 0) {
     return {
       hostname,
       modelId: 'PHP 5.4',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Unexpected format/length: ${details.passwordFormat}/${details.passwordLength}`,
       shouldCaptureHeartbleed: true,
@@ -52,7 +52,7 @@ export async function solvePhp54(ns: NS, hostname: DarknetHostname): Promise<Dar
     return {
       hostname,
       modelId: 'PHP 5.4',
-      attempted: false,
+      guessed: false,
       success: false,
       message: 'Invalid sorted password token in auth data',
       shouldCaptureHeartbleed: true,
@@ -66,7 +66,7 @@ export async function solvePhp54(ns: NS, hostname: DarknetHostname): Promise<Dar
       return {
         hostname,
         modelId: 'PHP 5.4',
-        attempted: true,
+        guessed: true,
         success: true,
         password: candidate,
         message: result.message,
@@ -78,7 +78,7 @@ export async function solvePhp54(ns: NS, hostname: DarknetHostname): Promise<Dar
   return {
     hostname,
     modelId: 'PHP 5.4',
-    attempted: true,
+    guessed: true,
     success: false,
     message: `Tried ${candidates.length} permutations derived from sorted token`,
     shouldCaptureHeartbleed: true,

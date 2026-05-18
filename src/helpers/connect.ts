@@ -1,4 +1,5 @@
 import { NS } from '@ns';
+import { quoteTerminalToken } from '/helpers/terminal-quote.js';
 import { Queue } from '/helpers/Queue.js';
 
 /**
@@ -34,7 +35,7 @@ export async function main(ns: NS): Promise<void> {
     return;
   }
 
-  const terminalCommand = `home; ${paths[target as string].map((e) => `connect ${e}`).join(';')}`;
+  const terminalCommand = `home; ${paths[target as string].map((e) => `connect ${quoteTerminalToken(e)}`).join(';')}`;
 
   const terminalInput = document.getElementById('terminal-input') as HTMLFormElement;
   if (!terminalInput) {

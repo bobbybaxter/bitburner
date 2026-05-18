@@ -3,7 +3,7 @@ import type { DarknetSolverResult } from '/helpers/darknet/solvers/types.js';
 import type { DarknetHostname } from '/helpers/darknet/types.js';
 
 const PROGRESS_FILE = '/helpers/darknet/open-web-access-point-progress.json';
-const BRUTEFORCE_ATTEMPTS_PER_PASS = 10;
+const BRUTEFORCE_GUESSES_PER_PASS = 10;
 
 const COMMON_8_DIGIT_PINS = [
   '12345678',
@@ -43,14 +43,19 @@ function getDictionaryCandidates(length: number): string[] {
   return COMMON_8_DIGIT_PINS.filter((pin) => pin.length === length);
 }
 
-async function tryCandidates(ns: NS, hostname: string, modelId: string, candidates: string[]): Promise<DarknetSolverResult | null> {
+async function tryCandidates(
+  ns: NS,
+  hostname: string,
+  modelId: string,
+  candidates: string[],
+): Promise<DarknetSolverResult | null> {
   for (const candidate of candidates) {
     const result = await ns.dnet.authenticate(hostname, candidate);
     if (result.success) {
       return {
         hostname,
         modelId,
-        attempted: true,
+        guessed: true,
         success: true,
         password: candidate,
         message: result.message,
@@ -62,12 +67,12 @@ async function tryCandidates(ns: NS, hostname: string, modelId: string, candidat
 }
 
 export async function solveOpenWebAccessPoint(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   if (details.passwordFormat !== 'numeric') {
     return {
       hostname,
       modelId: 'OpenWebAccessPoint',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Unexpected format ${details.passwordFormat}; expected numeric`,
       shouldCaptureHeartbleed: true,
@@ -88,7 +93,7 @@ export async function solveOpenWebAccessPoint(ns: NS, hostname: DarknetHostname)
   const maxValue = 10 ** details.passwordLength;
   let start = progress.nextByHost[hostname] ?? 0;
   if (start < 0 || start >= maxValue) start = 0;
-  const stop = Math.min(maxValue, start + BRUTEFORCE_ATTEMPTS_PER_PASS);
+  const stop = Math.min(maxValue, start + BRUTEFORCE_GUESSES_PER_PASS);
 
   for (let n = start; n < stop; n++) {
     const candidate = String(n).padStart(details.passwordLength, '0');
@@ -99,7 +104,7 @@ export async function solveOpenWebAccessPoint(ns: NS, hostname: DarknetHostname)
       return {
         hostname,
         modelId: 'OpenWebAccessPoint',
-        attempted: true,
+        guessed: true,
         success: true,
         password: candidate,
         message: result.message,
@@ -113,10 +118,9 @@ export async function solveOpenWebAccessPoint(ns: NS, hostname: DarknetHostname)
   return {
     hostname,
     modelId: 'OpenWebAccessPoint',
-    attempted: true,
+    guessed: true,
     success: false,
     message: `Dictionary miss; brute-forced range [${start}, ${stop}) of ${maxValue}`,
     shouldCaptureHeartbleed: true,
   };
 }
-

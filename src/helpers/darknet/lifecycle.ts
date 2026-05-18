@@ -14,11 +14,17 @@ import type { DarknetContext, DarknetHostname, DarknetNodeState } from '/helpers
 
 const BASE_AUTH_BACKOFF_MS = 15_000;
 const MAX_AUTH_BACKOFF_MS = 5 * 60_000;
-const DEFAULT_AUTH_ATTEMPT_LIMIT = 2;
+const DEFAULT_AUTH_GUESS_LIMIT = 2;
 const DEFAULT_HEARTBLEED_SAMPLE_LIMIT = 2;
 const DEFAULT_MEMORY_REALLOCATION_LIMIT = 2;
 const WORKER_DEPLOY_COOLDOWN_MS = 30_000;
 const DARKNET_WORKER_SCRIPT = 'darknet-worker.js';
+const DARKNET_WORKER_TASK_FILES = [
+  '/helpers/darknet/task-open-cache.js',
+  '/helpers/darknet/task-heartbleed.js',
+  '/helpers/darknet/task-memory-reallocation.js',
+  '/helpers/darknet/task-labradar.js',
+] as const;
 
 function syncWorkerScriptToConnectedHost(ns: NS, hostname: DarknetHostname): void {
   // Force overwrite so script changes propagate hop-by-hop across connected darknet hosts.
@@ -37,7 +43,7 @@ export type DarknetCrawlerDeployOptions = {
   maxDeployments?: number;
 };
 
-function ensureNode(state: DarknetContext['state'], hostname: DarknetHostname): DarknetNodeState {
+export function ensureNode(state: DarknetContext['state'], hostname: DarknetHostname): DarknetNodeState {
   const existing = state.nodes.get(hostname);
   if (existing) return existing;
 
@@ -49,7 +55,7 @@ function ensureNode(state: DarknetContext['state'], hostname: DarknetHostname): 
   return created;
 }
 
-function setUndirectedEdge(state: DarknetContext['state'], a: DarknetHostname, b: DarknetHostname): void {
+export function setUndirectedEdge(state: DarknetContext['state'], a: DarknetHostname, b: DarknetHostname): void {
   if (!state.edges.has(a)) state.edges.set(a, new Set<DarknetHostname>());
   if (!state.edges.has(b)) state.edges.set(b, new Set<DarknetHostname>());
   state.edges.get(a)?.add(b);
@@ -86,12 +92,10 @@ export function discoverFromCurrentServer(context: DarknetContext): void {
 
   ensureNode(state, current).lastSeenAt = now;
 
-  const currentNeighborSet = new Set<DarknetHostname>();
   for (const neighbor of neighbors) {
-    currentNeighborSet.add(neighbor);
     setUndirectedEdge(state, current, neighbor);
 
-    const details = ns.dnet.getServerAuthDetails(neighbor);
+    const details = ns.dnet.getServerDetails(neighbor);
     const node = ensureNode(state, neighbor);
     node.lastSeenAt = now;
     node.lastProbeAt = now;
@@ -146,7 +150,16 @@ export function discoverFromCurrentServer(context: DarknetContext): void {
     }
   }
 
-  state.edges.set(current, currentNeighborSet);
+  for (const stasisHost of stasisLinked) {
+    setUndirectedEdge(state, current, stasisHost);
+    const stasisNode = ensureNode(state, stasisHost);
+    stasisNode.lastSeenAt = now;
+    stasisNode.hasStasisLink = true;
+  }
+
+  // Do not replace state.edges.get(current): setUndirectedEdge() mutates the stored Set in place.
+  // Replacing it with only this probe's neighbors dropped edges learned from earlier hops / other hosts,
+  // which broke BFS paths (e.g. darkweb → … → deep servers) in saved state.
 }
 
 export function queueForRevisit(context: DarknetContext, hostname: DarknetHostname): void {
@@ -181,14 +194,14 @@ export function rememberPassword(
   node.lastAuthSuccessAt = now;
 }
 
-function computeNextBackoffMs(attemptCount: number): number {
-  const exp = Math.max(0, attemptCount - 1);
+function computeNextBackoffMs(guessCount: number): number {
+  const exp = Math.max(0, guessCount - 1);
   return Math.min(MAX_AUTH_BACKOFF_MS, BASE_AUTH_BACKOFF_MS * 2 ** exp);
 }
 
-function canAttemptAuth(node: DarknetNodeState, now: number): boolean {
+function canGuessAuth(node: DarknetNodeState, now: number): boolean {
   if (!node.isOnline || !node.isConnectedToCurrentServer || node.hasSession) return false;
-  if (node.nextAuthAttemptAt && now < node.nextAuthAttemptAt) return false;
+  if (node.nextAuthGuessAt && now < node.nextAuthGuessAt) return false;
   return true;
 }
 
@@ -199,7 +212,7 @@ async function tryAuthenticateConnectedHost(
   const { ns, state } = context;
   const now = Date.now();
   const node = ensureNode(state, hostname);
-  const modelId = node.modelId ?? ns.dnet.getServerAuthDetails(hostname).modelId;
+  const modelId = node.modelId ?? ns.dnet.getServerDetails(hostname).modelId;
   const solverResult = await runSolverForModel(ns, hostname, modelId);
   if (!solverResult) {
     state.revisitQueue.add(hostname);
@@ -216,14 +229,14 @@ async function tryAuthenticateConnectedHost(
     return { changedState: false, changedCredentials: false };
   }
 
-  node.authAttemptCount = (node.authAttemptCount ?? 0) + 1;
+  node.authGuessCount = (node.authGuessCount ?? 0) + 1;
   node.lastAuthMessage = solverResult.message;
 
   if (solverResult.success && solverResult.password != null) {
     rememberPassword(context, hostname, solverResult.password, modelId);
     node.hasSession = true;
     node.lastAuthSuccessAt = now;
-    node.nextAuthAttemptAt = undefined;
+    node.nextAuthGuessAt = undefined;
     state.revisitQueue.delete(hostname);
     logAuthEvent(ns, {
       ts: now,
@@ -239,7 +252,7 @@ async function tryAuthenticateConnectedHost(
   }
 
   node.lastAuthFailureAt = now;
-  node.nextAuthAttemptAt = now + computeNextBackoffMs(node.authAttemptCount);
+  node.nextAuthGuessAt = now + computeNextBackoffMs(node.authGuessCount);
   state.revisitQueue.add(hostname);
   logAuthEvent(ns, {
     ts: now,
@@ -269,48 +282,48 @@ async function tryAuthenticateConnectedHost(
   return { changedState: true, changedCredentials: false };
 }
 
-export async function attemptAuthOnConnectedServers(
+export async function guessAuthOnConnectedServers(
   context: DarknetContext,
-  maxAttempts = DEFAULT_AUTH_ATTEMPT_LIMIT,
-): Promise<{ changedState: boolean; changedCredentials: boolean; attempted: number }> {
+  maxGuesses = DEFAULT_AUTH_GUESS_LIMIT,
+): Promise<{ changedState: boolean; changedCredentials: boolean; guessed: number }> {
   const { state } = context;
   const now = Date.now();
-  const unlimitedAttempts = maxAttempts <= 0;
-  let attempted = 0;
+  const unlimitedGuesses = maxGuesses <= 0;
+  let guessed = 0;
   let changedState = false;
   let changedCredentials = false;
 
   for (const [hostname, node] of state.nodes.entries()) {
-    if (!unlimitedAttempts && attempted >= maxAttempts) break;
-    if (!canAttemptAuth(node, now)) continue;
+    if (!unlimitedGuesses && guessed >= maxGuesses) break;
+    if (!canGuessAuth(node, now)) continue;
 
     const result = await tryAuthenticateConnectedHost(context, hostname);
-    attempted += 1;
+    guessed += 1;
     changedState = changedState || result.changedState;
     changedCredentials = changedCredentials || result.changedCredentials;
   }
 
-  return { changedState, changedCredentials, attempted };
+  return { changedState, changedCredentials, guessed: guessed };
 }
 
 export async function runMemoryReallocationPass(
   context: DarknetContext,
   maxTargets = DEFAULT_MEMORY_REALLOCATION_LIMIT,
-): Promise<{ attempted: number; succeeded: number }> {
+): Promise<{ guessed: number; succeeded: number }> {
   const { ns, state } = context;
   const now = Date.now();
-  let attempted = 0;
+  let guessed = 0;
   let succeeded = 0;
   const targetLimit = Math.max(0, Math.floor(maxTargets));
 
   for (const [hostname, node] of state.nodes.entries()) {
-    if (attempted >= targetLimit) break;
+    if (guessed >= targetLimit) break;
     if (!node.isOnline || !node.isConnectedToCurrentServer || !node.hasSession) continue;
 
     const blockedRam = ns.dnet.getBlockedRam(hostname);
     if (blockedRam <= 0) continue;
 
-    attempted += 1;
+    guessed += 1;
     try {
       const result = await ns.dnet.memoryReallocation(hostname);
       if (result.success) succeeded += 1;
@@ -332,7 +345,7 @@ export async function runMemoryReallocationPass(
     }
   }
 
-  return { attempted, succeeded };
+  return { guessed: guessed, succeeded };
 }
 
 export async function collectDarknetHints(
@@ -411,7 +424,7 @@ export async function collectDarknetHints(
         ts: Date.now(),
         hostname: current,
         modelId: currentNode?.modelId,
-        event: 'phishing-attempt',
+        event: 'phishing-guess',
         message: result.message,
         notes: 'Run from current darknet server; message may mention cache retrieval',
       });
@@ -420,7 +433,7 @@ export async function collectDarknetHints(
         ts: Date.now(),
         hostname: current,
         modelId: currentNode?.modelId,
-        event: 'phishing-attempt',
+        event: 'phishing-guess',
         message: String(error),
         notes: 'Phishing attack call threw error',
       });
@@ -431,13 +444,16 @@ export async function collectDarknetHints(
 const DEFAULT_CRAWLER_MAX_DEPLOYS = 2;
 
 function getCrawlerTransferFiles(ns: NS, workerScript: string): string[] {
+  if (workerScript === DARKNET_WORKER_SCRIPT) {
+    return [workerScript, ...DARKNET_WORKER_TASK_FILES];
+  }
   return [workerScript];
 }
 
 export function deployCrawlerWorkers(
   context: DarknetContext,
   options: DarknetCrawlerDeployOptions = {},
-): { attempted: number; started: number } {
+): { guessed: number; started: number } {
   const { ns, state } = context;
   const now = Date.now();
   const current = ns.getHostname();
@@ -446,12 +462,12 @@ export function deployCrawlerWorkers(
   const maxDeployments = Math.max(0, Math.floor(options.maxDeployments ?? DEFAULT_CRAWLER_MAX_DEPLOYS));
   const transferFiles = getCrawlerTransferFiles(ns, workerScript);
   const workerRam = ns.getScriptRam(workerScript, 'home');
-  if (workerRam <= 0) return { attempted: 0, started: 0 };
-  let attempted = 0;
+  if (workerRam <= 0) return { guessed: 0, started: 0 };
+  let guessed = 0;
   let started = 0;
 
   for (const [hostname, node] of state.nodes.entries()) {
-    if (attempted >= maxDeployments) break;
+    if (guessed >= maxDeployments) break;
     if (hostname === current) continue;
     if (!node.isOnline || !node.isConnectedToCurrentServer || !node.hasSession) continue;
     if (node.lastWorkerDeployAt && now - node.lastWorkerDeployAt < WORKER_DEPLOY_COOLDOWN_MS) continue;
@@ -470,7 +486,7 @@ export function deployCrawlerWorkers(
       continue;
     }
 
-    attempted += 1;
+    guessed += 1;
     const copied = ns.scp(transferFiles, hostname, 'home');
     if (!copied) {
       logAuthEvent(ns, {
@@ -514,5 +530,5 @@ export function deployCrawlerWorkers(
     }
   }
 
-  return { attempted, started };
+  return { guessed: guessed, started };
 }

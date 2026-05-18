@@ -16,8 +16,8 @@ export type DarknetNodeState = {
   lastSeenAt: number;
   lastAuthSuccessAt?: number;
   lastAuthFailureAt?: number;
-  authAttemptCount?: number;
-  nextAuthAttemptAt?: number;
+  authGuessCount?: number;
+  nextAuthGuessAt?: number;
   lastAuthMessage?: string;
   lastWorkerDeployAt?: number;
   lastWorkerDeployFailureAt?: number;

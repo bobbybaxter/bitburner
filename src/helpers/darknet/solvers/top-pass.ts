@@ -110,13 +110,13 @@ function getCandidates(length: number, format: string): string[] {
 }
 
 export async function solveTopPass(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   const candidates = getCandidates(details.passwordLength, details.passwordFormat);
   if (candidates.length === 0) {
     return {
       hostname,
       modelId: 'TopPass',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `No TopPass candidates for schema ${details.passwordLength}/${details.passwordFormat}`,
       shouldCaptureHeartbleed: true,
@@ -129,7 +129,7 @@ export async function solveTopPass(ns: NS, hostname: DarknetHostname): Promise<D
       return {
         hostname,
         modelId: 'TopPass',
-        attempted: true,
+        guessed: true,
         success: true,
         password: candidate,
         message: result.message,
@@ -141,10 +141,9 @@ export async function solveTopPass(ns: NS, hostname: DarknetHostname): Promise<D
   return {
     hostname,
     modelId: 'TopPass',
-    attempted: true,
+    guessed: true,
     success: false,
     message: `Tried ${candidates.length} common-password candidates with no match`,
     shouldCaptureHeartbleed: true,
   };
 }
-

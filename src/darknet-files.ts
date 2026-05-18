@@ -1,5 +1,6 @@
 import type { NS } from '@ns';
 import { loadDarknetState } from '/helpers/darknet/storage.js';
+import { quoteTerminalToken } from '/helpers/terminal-quote.js';
 
 type Flags = {
   showJs: boolean;
@@ -21,7 +22,7 @@ function escapeJsSingleQuoted(value: string): string {
 
 function createTerminalCommand(hostname: string, file: string): string {
   if (file.toLowerCase().endsWith('.exe')) {
-    return `home; connect ${hostname}; ${file}`;
+    return `home; connect ${quoteTerminalToken(hostname)}; ${quoteTerminalToken(file)}`;
   }
   const safeHost = escapeJsSingleQuoted(hostname);
   const safeFile = escapeJsSingleQuoted(file);
@@ -29,7 +30,7 @@ function createTerminalCommand(hostname: string, file: string): string {
 }
 
 function createFileLink(hostname: string, file: string): string {
-  const command = escapeJsSingleQuoted(createTerminalCommand(hostname, file));
+  const commandAttr = escapeHtml(escapeJsSingleQuoted(createTerminalCommand(hostname, file)));
   const title = file.toLowerCase().endsWith('.exe') ? `Run ${file} on ${hostname}` : `Open ${file} on ${hostname}`;
   return [
     "<a class='scan-analyze-link'",
@@ -37,7 +38,7 @@ function createFileLink(hostname: string, file: string): string {
     ' onClick="(function(){',
     "const terminalInput=document.getElementById('terminal-input');",
     'if(!terminalInput) return;',
-    `terminalInput.value='${command}';`,
+    `terminalInput.value='${commandAttr}';`,
     'const handler=Object.keys(terminalInput)[1];',
     'terminalInput[handler].onChange({target:terminalInput});',
     'terminalInput[handler].onKeyDown({keyCode:13,preventDefault:()=>null});',
@@ -75,10 +76,11 @@ export async function main(ns: NS): Promise<void> {
     return;
   }
 
-  let output = 'Darknet Files:';
+  let output = '<span style="color:#a6e22e;font-weight:600;">Darknet Files:</span>';
 
   const hostsWithFiles: { hostname: string; files: string[] }[] = [];
   for (const hostname of hostnames) {
+    if (!ns.serverExists(hostname)) continue;
     const files = ns
       .ls(hostname)
       .filter((file) => shouldShowFile(file, flags))

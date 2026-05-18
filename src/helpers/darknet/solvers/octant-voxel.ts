@@ -21,7 +21,7 @@ function parseApproxDecimal(encoded: string, base: number): number | null {
   for (let i = 0; i < frac.length; i++) {
     const digit = BASE_CHARS.indexOf(frac[i]);
     if (digit < 0 || digit >= maxDigitExclusive) return null;
-    total += digit * base ** (-(i + 1));
+    total += digit * base ** (i + 1);
   }
 
   return total;
@@ -63,12 +63,12 @@ function inferOctantVoxelPassword(data: string, length: number): string | null {
 }
 
 export async function solveOctantVoxel(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   if (details.passwordFormat !== 'numeric') {
     return {
       hostname,
       modelId: 'OctantVoxel',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Unexpected password format: ${details.passwordFormat}`,
       shouldCaptureHeartbleed: true,
@@ -80,7 +80,7 @@ export async function solveOctantVoxel(ns: NS, hostname: DarknetHostname): Promi
     return {
       hostname,
       modelId: 'OctantVoxel',
-      attempted: false,
+      guessed: false,
       success: false,
       message: 'Could not decode base-N payload in data field',
       shouldCaptureHeartbleed: true,
@@ -91,11 +91,10 @@ export async function solveOctantVoxel(ns: NS, hostname: DarknetHostname): Promi
   return {
     hostname,
     modelId: 'OctantVoxel',
-    attempted: true,
+    guessed: true,
     success: result.success,
     password: result.success ? password : undefined,
     message: result.message,
     shouldCaptureHeartbleed: !result.success,
   };
 }
-

@@ -22,13 +22,13 @@ function matchesFormat(value: string, format: string): boolean {
 }
 
 export async function solve110100100(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   const decoded = decodeBinaryPayload(details.data ?? '');
   if (!decoded) {
     return {
       hostname,
       modelId: '110100100',
-      attempted: false,
+      guessed: false,
       success: false,
       message: 'Could not decode binary payload from auth data',
       shouldCaptureHeartbleed: true,
@@ -39,7 +39,7 @@ export async function solve110100100(ns: NS, hostname: DarknetHostname): Promise
     return {
       hostname,
       modelId: '110100100',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Decoded payload does not match schema ${details.passwordLength}/${details.passwordFormat}`,
       shouldCaptureHeartbleed: true,
@@ -50,7 +50,7 @@ export async function solve110100100(ns: NS, hostname: DarknetHostname): Promise
   return {
     hostname,
     modelId: '110100100',
-    attempted: true,
+    guessed: true,
     success: result.success,
     password: result.success ? decoded : undefined,
     message: result.message,

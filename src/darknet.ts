@@ -1,14 +1,16 @@
-// TODO: if there's a txt or lit file, read it
-// need to figure out why servers aren't opening up their RAM
-// need to figure out what to actually do what all of that RAM
+// TODO: need to figure out why servers aren't opening up their RAM
+// TODO: need to figure out what to actually do what all of that RAM
+// TODO: need to figure out a better system for cracking darknet servers
+//   because there are multiple servers trying to crack the same server at the same time
+//
 
 import type { NS } from '@ns';
 import {
-  attemptAuthOnConnectedServers,
   bootstrapDarknetContext,
   collectDarknetHints,
   deployCrawlerWorkers,
   discoverFromCurrentServer,
+  guessAuthOnConnectedServers,
   runMemoryReallocationPass,
   saveIfDirtyOrDue,
 } from '/helpers/darknet/lifecycle.js';
@@ -16,7 +18,7 @@ import { processWorkerSyncMessages } from '/helpers/darknet/worker-sync.js';
 
 type Flags = {
   interval: number;
-  authAttempts: number;
+  authGuesses: number;
   heartbleedSamples: number;
   memoryReallocationTargets: number;
   deployWorkers: boolean;
@@ -29,8 +31,8 @@ type Flags = {
 export async function main(ns: NS): Promise<void> {
   const flags = ns.flags([
     ['interval', 5_000],
-    // <= 0 means "no cap" (attempt all eligible connected hosts each pass).
-    ['authAttempts', 0],
+    // <= 0 means "no cap" (guess all eligible connected hosts each pass).
+    ['authGuesses', 0],
     ['heartbleedSamples', 2],
     ['memoryReallocationTargets', 2],
     ['deployWorkers', true],
@@ -45,6 +47,8 @@ export async function main(ns: NS): Promise<void> {
   ns.disableLog('dnet.probe');
   ns.disableLog('getServerMaxRam');
   ns.disableLog('getServerUsedRam');
+  ns.disableLog('scp');
+  ns.disableLog('dnet.heartbleed');
 
   if (!ns.fileExists('DarkscapeNavigator.exe', 'home')) {
     ns.tprint('ERROR: DarkscapeNavigator.exe is required before running darknet.ts');
@@ -59,7 +63,7 @@ export async function main(ns: NS): Promise<void> {
   while (true) {
     const workerSync = processWorkerSyncMessages(context);
     discoverFromCurrentServer(context);
-    const auth = await attemptAuthOnConnectedServers(context, Math.floor(flags.authAttempts));
+    const auth = await guessAuthOnConnectedServers(context, Math.floor(flags.authGuesses));
     await runMemoryReallocationPass(context, Math.max(0, Math.floor(flags.memoryReallocationTargets)));
     if (flags.deployWorkers) {
       deployCrawlerWorkers(context, {
@@ -73,7 +77,7 @@ export async function main(ns: NS): Promise<void> {
       openCachesOnCurrentServer: flags.openCaches,
       runPhishingAttack: flags.phishing,
     });
-    saveIfDirtyOrDue(context, auth.changedCredentials || workerSync.changedCredentials);
+    saveIfDirtyOrDue(context, auth.changedCredentials || workerSync.changedCredentials || workerSync.changedEdges);
     await ns.sleep(Math.max(200, flags.interval));
   }
 }
@@ -81,7 +85,7 @@ export async function main(ns: NS): Promise<void> {
 export function autocomplete(): string[] {
   return [
     '--interval',
-    '--authAttempts',
+    '--authGuesses',
     '--heartbleedSamples',
     '--memoryReallocationTargets',
     '--deployWorkers',

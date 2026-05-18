@@ -9,14 +9,14 @@ function inferPinFromHint(passwordHint: string, expectedLength: number): string 
 }
 
 export async function solveDeskMemo31(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   const expectedLength = details.passwordLength;
 
   if (details.passwordFormat !== 'numeric' || expectedLength <= 0) {
     return {
       hostname,
       modelId: 'DeskMemo_3.1',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Unexpected format/length: ${details.passwordFormat}/${expectedLength}`,
       shouldCaptureHeartbleed: true,
@@ -28,7 +28,7 @@ export async function solveDeskMemo31(ns: NS, hostname: DarknetHostname): Promis
     return {
       hostname,
       modelId: 'DeskMemo_3.1',
-      attempted: false,
+      guessed: false,
       success: false,
       message: 'Could not infer numeric PIN from hint',
       shouldCaptureHeartbleed: true,
@@ -39,7 +39,7 @@ export async function solveDeskMemo31(ns: NS, hostname: DarknetHostname): Promis
   return {
     hostname,
     modelId: 'DeskMemo_3.1',
-    attempted: true,
+    guessed: true,
     success: result.success,
     password: result.success ? password : undefined,
     message: result.message,

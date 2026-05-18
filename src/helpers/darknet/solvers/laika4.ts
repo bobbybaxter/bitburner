@@ -15,13 +15,13 @@ function filterBySchema(candidates: readonly string[], length: number, format: s
 }
 
 export async function solveLaika4(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   const candidates = filterBySchema(COMMON_DOG_NAMES, details.passwordLength, details.passwordFormat);
   if (candidates.length === 0) {
     return {
       hostname,
       modelId: 'Laika4',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `No dog-name candidates matched length/format ${details.passwordLength}/${details.passwordFormat}`,
       shouldCaptureHeartbleed: true,
@@ -34,7 +34,7 @@ export async function solveLaika4(ns: NS, hostname: DarknetHostname): Promise<Da
       return {
         hostname,
         modelId: 'Laika4',
-        attempted: true,
+        guessed: true,
         success: true,
         password: candidate,
         message: result.message,
@@ -46,7 +46,7 @@ export async function solveLaika4(ns: NS, hostname: DarknetHostname): Promise<Da
   return {
     hostname,
     modelId: 'Laika4',
-    attempted: true,
+    guessed: true,
     success: false,
     message: `Tried ${candidates.length} dog-name candidates with no match`,
     shouldCaptureHeartbleed: true,

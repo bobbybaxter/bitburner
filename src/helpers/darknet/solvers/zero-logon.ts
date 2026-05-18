@@ -8,7 +8,7 @@ export async function solveZeroLogon(ns: NS, hostname: DarknetHostname): Promise
   return {
     hostname,
     modelId: 'ZeroLogon',
-    attempted: true,
+    guessed: true,
     success: result.success,
     password: result.success ? password : undefined,
     message: result.message,

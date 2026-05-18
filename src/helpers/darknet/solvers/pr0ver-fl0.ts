@@ -3,7 +3,7 @@ import type { DarknetSolverResult } from '/helpers/darknet/solvers/types.js';
 import type { DarknetHostname } from '/helpers/darknet/types.js';
 
 const PROGRESS_FILE = '/helpers/darknet/pr0ver-fl0-progress.json';
-const ATTEMPTS_PER_PASS = 250;
+const GUESSES_PER_PASS = 250;
 const ALPHANUMERIC_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 type ProgressFile = {
@@ -43,12 +43,12 @@ function powBigInt(base: bigint, exp: number): bigint {
 }
 
 export async function solvePr0verFl0(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   if (details.passwordFormat !== 'alphanumeric' || details.passwordLength <= 0) {
     return {
       hostname,
       modelId: 'Pr0verFl0',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Unexpected format/length: ${details.passwordFormat}/${details.passwordLength}`,
       shouldCaptureHeartbleed: true,
@@ -69,8 +69,8 @@ export async function solvePr0verFl0(ns: NS, hostname: DarknetHostname): Promise
   }
   if (start < 0n || start >= total) start = 0n;
 
-  const maxAttempts = BigInt(ATTEMPTS_PER_PASS);
-  const stop = start + maxAttempts > total ? total : start + maxAttempts;
+  const maxGuesses = BigInt(GUESSES_PER_PASS);
+  const stop = start + maxGuesses > total ? total : start + maxGuesses;
   for (let idx = start; idx < stop; idx++) {
     const candidate = toBaseNFixed(idx, details.passwordLength, ALPHANUMERIC_CHARSET);
     const result = await ns.dnet.authenticate(hostname, candidate);
@@ -80,7 +80,7 @@ export async function solvePr0verFl0(ns: NS, hostname: DarknetHostname): Promise
       return {
         hostname,
         modelId: 'Pr0verFl0',
-        attempted: true,
+        guessed: true,
         success: true,
         password: candidate,
         message: result.message,
@@ -94,7 +94,7 @@ export async function solvePr0verFl0(ns: NS, hostname: DarknetHostname): Promise
   return {
     hostname,
     modelId: 'Pr0verFl0',
-    attempted: true,
+    guessed: true,
     success: false,
     message: `Bruteforced alphanumeric range [${start.toString()}, ${stop.toString()}) of ${total.toString()}`,
     shouldCaptureHeartbleed: true,

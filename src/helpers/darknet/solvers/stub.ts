@@ -8,11 +8,11 @@ export function buildStubSolverResult(
   modelId: string,
   notes: string,
 ): DarknetSolverResult {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   return {
     hostname,
     modelId,
-    attempted: false,
+    guessed: false,
     success: false,
     message: `${notes} hint="${details.passwordHint}" data="${details.data}" len=${details.passwordLength} fmt=${details.passwordFormat}`,
     shouldCaptureHeartbleed: true,

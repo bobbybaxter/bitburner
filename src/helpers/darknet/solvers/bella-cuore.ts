@@ -3,7 +3,7 @@ import type { DarknetSolverResult } from '/helpers/darknet/solvers/types.js';
 import type { DarknetHostname } from '/helpers/darknet/types.js';
 
 const RANGE_PROGRESS_FILE = '/helpers/darknet/bella-cuore-progress.json';
-const RANGE_ATTEMPTS_PER_PASS = 250;
+const RANGE_GUESSES_PER_PASS = 250;
 
 const ROMAN_VALUES: Record<string, number> = {
   I: 1,
@@ -47,7 +47,7 @@ function romanToInteger(input: string): number | null {
   return total;
 }
 
-function getRomanToken(details: ReturnType<NS['dnet']['getServerAuthDetails']>): string | null {
+function getRomanToken(details: ReturnType<NS['dnet']['getServerDetails']>): string | null {
   const fromData = (details.data ?? '').trim();
   if (fromData.length > 0) return fromData;
 
@@ -56,7 +56,7 @@ function getRomanToken(details: ReturnType<NS['dnet']['getServerAuthDetails']>):
   return fromHint ? fromHint.trim() : null;
 }
 
-function getRomanRange(details: ReturnType<NS['dnet']['getServerAuthDetails']>): [number, number] | null {
+function getRomanRange(details: ReturnType<NS['dnet']['getServerDetails']>): [number, number] | null {
   const raw = (details.data ?? '').trim();
   const parts = raw
     .split(',')
@@ -72,12 +72,12 @@ function getRomanRange(details: ReturnType<NS['dnet']['getServerAuthDetails']>):
 }
 
 export async function solveBellaCuore(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   if (details.passwordFormat !== 'numeric') {
     return {
       hostname,
       modelId: 'BellaCuore',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Unexpected password format: ${details.passwordFormat}`,
       shouldCaptureHeartbleed: true,
@@ -90,7 +90,7 @@ export async function solveBellaCuore(ns: NS, hostname: DarknetHostname): Promis
     const progress = loadRangeProgress(ns);
     let start = progress.nextByHost[hostname] ?? minValue;
     if (start < minValue || start > maxValue) start = minValue;
-    const stop = Math.min(maxValue + 1, start + RANGE_ATTEMPTS_PER_PASS);
+    const stop = Math.min(maxValue + 1, start + RANGE_GUESSES_PER_PASS);
 
     for (let n = start; n < stop; n++) {
       const password = String(n);
@@ -102,7 +102,7 @@ export async function solveBellaCuore(ns: NS, hostname: DarknetHostname): Promis
         return {
           hostname,
           modelId: 'BellaCuore',
-          attempted: true,
+          guessed: true,
           success: true,
           password,
           message: result.message,
@@ -116,7 +116,7 @@ export async function solveBellaCuore(ns: NS, hostname: DarknetHostname): Promis
     return {
       hostname,
       modelId: 'BellaCuore',
-      attempted: true,
+      guessed: true,
       success: false,
       message: `Bruteforced roman range [${start}, ${stop}) from [${minValue}, ${maxValue}]`,
       shouldCaptureHeartbleed: true,
@@ -128,7 +128,7 @@ export async function solveBellaCuore(ns: NS, hostname: DarknetHostname): Promis
     return {
       hostname,
       modelId: 'BellaCuore',
-      attempted: false,
+      guessed: false,
       success: false,
       message: 'No roman numeral token found in data/hint',
       shouldCaptureHeartbleed: true,
@@ -140,7 +140,7 @@ export async function solveBellaCuore(ns: NS, hostname: DarknetHostname): Promis
     return {
       hostname,
       modelId: 'BellaCuore',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Could not parse roman numeral: ${token}`,
       shouldCaptureHeartbleed: true,
@@ -152,7 +152,7 @@ export async function solveBellaCuore(ns: NS, hostname: DarknetHostname): Promis
     return {
       hostname,
       modelId: 'BellaCuore',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `Parsed value ${password} does not match expected length ${details.passwordLength}`,
       shouldCaptureHeartbleed: true,
@@ -163,7 +163,7 @@ export async function solveBellaCuore(ns: NS, hostname: DarknetHostname): Promis
   return {
     hostname,
     modelId: 'BellaCuore',
-    attempted: true,
+    guessed: true,
     success: result.success,
     password: result.success ? password : undefined,
     message: result.message,

@@ -16,7 +16,7 @@ type AuthDiagnosticEvent = {
     | 'heartbleed-sample'
     | 'heartbleed-ambient'
     | 'cache-opened'
-    | 'phishing-attempt'
+    | 'phishing-guess'
     | 'crawler-deploy-success'
     | 'crawler-deploy-failure'
     | 'memory-reallocation-success'

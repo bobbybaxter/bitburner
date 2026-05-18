@@ -67,7 +67,7 @@ function parseSimpleArithmeticExpression(expression: string): number {
   return parseFloat(leftover);
 }
 
-function inferMathMLPassword(details: ReturnType<NS['dnet']['getServerAuthDetails']>): string | null {
+function inferMathMLPassword(details: ReturnType<NS['dnet']['getServerDetails']>): string | null {
   if (details.passwordFormat !== 'numeric' || details.passwordLength <= 0) return null;
   const cleaned = cleanArithmeticExpression(details.data ?? '');
   if (!cleaned) return null;
@@ -78,13 +78,13 @@ function inferMathMLPassword(details: ReturnType<NS['dnet']['getServerAuthDetail
 }
 
 export async function solveMathML(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   const password = inferMathMLPassword(details);
   if (!password) {
     return {
       hostname,
       modelId: 'MathML',
-      attempted: false,
+      guessed: false,
       success: false,
       message: 'Could not evaluate arithmetic expression from auth data',
       shouldCaptureHeartbleed: true,
@@ -95,7 +95,7 @@ export async function solveMathML(ns: NS, hostname: DarknetHostname): Promise<Da
   return {
     hostname,
     modelId: 'MathML',
-    attempted: true,
+    guessed: true,
     success: result.success,
     password: result.success ? password : undefined,
     message: result.message,

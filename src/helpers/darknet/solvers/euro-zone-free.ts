@@ -44,13 +44,13 @@ function getCandidates(length: number, format: string): string[] {
 }
 
 export async function solveEuroZoneFree(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   const candidates = getCandidates(details.passwordLength, details.passwordFormat);
   if (candidates.length === 0) {
     return {
       hostname,
       modelId: 'EuroZone Free',
-      attempted: false,
+      guessed: false,
       success: false,
       message: `No EU-country candidates for schema ${details.passwordLength}/${details.passwordFormat}`,
       shouldCaptureHeartbleed: true,
@@ -63,7 +63,7 @@ export async function solveEuroZoneFree(ns: NS, hostname: DarknetHostname): Prom
       return {
         hostname,
         modelId: 'EuroZone Free',
-        attempted: true,
+        guessed: true,
         success: true,
         password: candidate,
         message: result.message,
@@ -75,7 +75,7 @@ export async function solveEuroZoneFree(ns: NS, hostname: DarknetHostname): Prom
   return {
     hostname,
     modelId: 'EuroZone Free',
-    attempted: true,
+    guessed: true,
     success: false,
     message: `Tried ${candidates.length} EU-country candidates with no match`,
     shouldCaptureHeartbleed: true,

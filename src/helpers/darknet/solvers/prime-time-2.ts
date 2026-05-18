@@ -23,7 +23,7 @@ function largestPrimeFactor(value: bigint): bigint {
   return n > 1n ? n : largest;
 }
 
-function inferCandidate(details: ReturnType<NS['dnet']['getServerAuthDetails']>): string | null {
+function inferCandidate(details: ReturnType<NS['dnet']['getServerDetails']>): string | null {
   if (details.passwordFormat !== 'numeric' || details.passwordLength <= 0) return null;
   const targetText = (details.data ?? '').trim();
   if (!/^\d+$/.test(targetText)) return null;
@@ -34,13 +34,13 @@ function inferCandidate(details: ReturnType<NS['dnet']['getServerAuthDetails']>)
 }
 
 export async function solvePrimeTime2(ns: NS, hostname: DarknetHostname): Promise<DarknetSolverResult> {
-  const details = ns.dnet.getServerAuthDetails(hostname);
+  const details = ns.dnet.getServerDetails(hostname);
   const password = inferCandidate(details);
   if (!password) {
     return {
       hostname,
       modelId: 'PrimeTime 2',
-      attempted: false,
+      guessed: false,
       success: false,
       message: 'Could not infer largest prime factor from auth data',
       shouldCaptureHeartbleed: true,
@@ -51,7 +51,7 @@ export async function solvePrimeTime2(ns: NS, hostname: DarknetHostname): Promis
   return {
     hostname,
     modelId: 'PrimeTime 2',
-    attempted: true,
+    guessed: true,
     success: result.success,
     password: result.success ? password : undefined,
     message: result.message,

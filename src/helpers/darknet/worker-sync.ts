@@ -1,6 +1,6 @@
 import type { NS } from '@ns';
 import { logAuthEvent } from '/helpers/darknet/diagnostics.js';
-import { rememberPassword } from '/helpers/darknet/lifecycle.js';
+import { ensureNode, rememberPassword, setUndirectedEdge } from '/helpers/darknet/lifecycle.js';
 import type { DarknetContext, DarknetHostname } from '/helpers/darknet/types.js';
 
 export const DARKNET_WORKER_SYNC_PORT = 17;
@@ -27,6 +27,7 @@ type ActiveWorkerLease = {
 type NilConstraintState = {
   knownByPos: (string | null)[];
   forbiddenByPos: string[][];
+  scratchGuess?: string | null;
 };
 
 type WorkerSyncMessage =
@@ -61,8 +62,14 @@ type WorkerSyncMessage =
   | {
       kind: 'password-stale';
       hostname: DarknetHostname;
-      attemptedPassword?: string;
+      guessedPassword?: string;
       sourceHost?: string;
+      ts: number;
+    }
+  | {
+      kind: 'edges';
+      hostname: DarknetHostname;
+      neighbors: DarknetHostname[];
       ts: number;
     };
 
@@ -105,9 +112,7 @@ function readSharedProgress(ns: NS, hostname: DarknetHostname): SharedProgressFi
 }
 
 function fingerprintsMatch(a: WorkerProgressFingerprint, b: WorkerProgressFingerprint): boolean {
-  return (
-    a.modelId === b.modelId && a.passwordLength === b.passwordLength && a.passwordFormat === b.passwordFormat
-  );
+  return a.modelId === b.modelId && a.passwordLength === b.passwordLength && a.passwordFormat === b.passwordFormat;
 }
 
 function applyProgressUpdate(ns: NS, message: Extract<WorkerSyncMessage, { kind: 'progress-update' }>): void {
@@ -119,11 +124,7 @@ function applyProgressUpdate(ns: NS, message: Extract<WorkerSyncMessage, { kind:
   const sameFingerprint = existing != null && fingerprintsMatch(existing.fingerprint, message.fingerprint);
 
   const constraints =
-    message.constraints !== undefined
-      ? message.constraints
-      : sameFingerprint
-        ? existing?.constraints
-        : undefined;
+    message.constraints !== undefined ? message.constraints : sameFingerprint ? existing?.constraints : undefined;
   const nilConstraints =
     message.nilConstraints !== undefined
       ? message.nilConstraints
@@ -160,7 +161,10 @@ function applyProgressClear(ns: NS, message: Extract<WorkerSyncMessage, { kind: 
   ns.rm(path, 'home');
 }
 
-function applyPasswordFound(context: DarknetContext, message: Extract<WorkerSyncMessage, { kind: 'password-found' }>): void {
+function applyPasswordFound(
+  context: DarknetContext,
+  message: Extract<WorkerSyncMessage, { kind: 'password-found' }>,
+): void {
   rememberPassword(context, message.hostname, message.password, message.modelId);
   applyProgressClear(context.ns, {
     kind: 'progress-clear',
@@ -171,6 +175,20 @@ function applyPasswordFound(context: DarknetContext, message: Extract<WorkerSync
   });
 }
 
+function applyEdges(context: DarknetContext, message: Extract<WorkerSyncMessage, { kind: 'edges' }>): boolean {
+  const { state } = context;
+  let changed = false;
+  ensureNode(state, message.hostname);
+  const existing = state.edges.get(message.hostname);
+  for (const neighbor of message.neighbors) {
+    if (typeof neighbor !== 'string' || neighbor.length === 0) continue;
+    if (!existing || !existing.has(neighbor)) changed = true;
+    ensureNode(state, neighbor);
+    setUndirectedEdge(state, message.hostname, neighbor);
+  }
+  return changed;
+}
+
 function applyPasswordStale(
   context: DarknetContext,
   message: Extract<WorkerSyncMessage, { kind: 'password-stale' }>,
@@ -178,7 +196,7 @@ function applyPasswordStale(
   context.ns.rm(getSharedProgressPath(message.hostname), 'home');
   const existing = context.passwords.get(message.hostname);
   if (!existing) return false;
-  if (message.attemptedPassword != null && existing.password !== message.attemptedPassword) return false;
+  if (message.guessedPassword != null && existing.password !== message.guessedPassword) return false;
   context.passwords.delete(message.hostname);
   const node = context.state.nodes.get(message.hostname);
   if (node) {
@@ -191,10 +209,12 @@ function applyPasswordStale(
 export function processWorkerSyncMessages(context: DarknetContext): {
   processed: number;
   changedCredentials: boolean;
+  changedEdges: boolean;
 } {
   const { ns } = context;
   let processed = 0;
   let changedCredentials = false;
+  let changedEdges = false;
 
   while (true) {
     const raw = ns.readPort(DARKNET_WORKER_SYNC_PORT);
@@ -223,8 +243,11 @@ export function processWorkerSyncMessages(context: DarknetContext): {
       case 'password-stale':
         changedCredentials = applyPasswordStale(context, raw) || changedCredentials;
         break;
+      case 'edges':
+        changedEdges = applyEdges(context, raw) || changedEdges;
+        break;
     }
   }
 
-  return { processed, changedCredentials };
+  return { processed, changedCredentials, changedEdges };
 }
