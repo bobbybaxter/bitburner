@@ -1,5 +1,6 @@
 import { NS, ProgramName } from '@ns';
 import { Do } from '/helpers/do.js';
+import { INFILTRATION_API_DIFFICULTY_AT_UI_100, toInfiltrationUiDifficulty } from '/helpers/infiltration-difficulty.js';
 
 /**
  * Starts all scripts on the home server
@@ -10,7 +11,8 @@ type InfiltrationLocation = { name: string; city: string };
 type InfiltrationReward = { tradeRep?: number; sellCash?: number; cash?: number };
 type InfiltrationData = { reward?: InfiltrationReward; difficulty?: number };
 
-const MAX_STARTUP_INFILTRATION_DIFFICULTY = 3.5;
+/** Sector-12 startup infiltrations: cap at ~100 on the v3 UI-equivalent bar. */
+const MAX_STARTUP_INFILTRATION_API_DIFFICULTY = INFILTRATION_API_DIFFICULTY_AT_UI_100;
 
 /** TOR router list price (grind money target until Tor is owned; `purchaseTor` has no cost API). */
 const TOR_ROUTER_PRICE = 200_000;
@@ -69,12 +71,13 @@ function pickBestSector12InfiltrationLocation(ns: NS): InfiltrationLocation | nu
     const difficulty = infiltration.difficulty ?? Number.POSITIVE_INFINITY;
     return { location, moneyReward, repReward, difficulty };
   });
-  const viable = scored.filter((entry) => entry.difficulty <= MAX_STARTUP_INFILTRATION_DIFFICULTY);
+  const viable = scored.filter((entry) => entry.difficulty <= MAX_STARTUP_INFILTRATION_API_DIFFICULTY);
   if (viable.length === 0) {
     const easiest = scored.reduce((a, b) => (a.difficulty <= b.difficulty ? a : b));
+    const easiestUi = toInfiltrationUiDifficulty(easiest.difficulty);
     ns.tprint(
-      `WARN: No Sector-12 infiltrations are viable (difficulty <= ${MAX_STARTUP_INFILTRATION_DIFFICULTY.toFixed(1)}). ` +
-        `Easiest is ${easiest.location.name} at ${easiest.difficulty.toFixed(3)}.`,
+      `WARN: No Sector-12 infiltrations are viable (API difficulty <= ${MAX_STARTUP_INFILTRATION_API_DIFFICULTY.toFixed(2)}, ~${toInfiltrationUiDifficulty(MAX_STARTUP_INFILTRATION_API_DIFFICULTY).toFixed(0)} UI). ` +
+        `Easiest is ${easiest.location.name} at API ${easiest.difficulty.toFixed(3)} (~${easiestUi.toFixed(1)} UI).`,
     );
     return null;
   }

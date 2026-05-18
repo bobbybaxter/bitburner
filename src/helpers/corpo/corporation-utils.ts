@@ -97,6 +97,9 @@ export const exportString = '(IPROD+IINV/10)*(-1)';
 
 export const dummyDivisionNamePrefix = 'z-';
 
+/** Maximum divisions per corporation; {@link NS.corporation.expandIndustry} fails beyond this. */
+const CORPORATION_DIVISION_CAP = 20;
+
 export const sampleProductName = 'Sample product';
 
 // Key: divisionName|city
@@ -2087,8 +2090,6 @@ export async function getProductMarketPrice(
 }
 
 export async function createDummyDivisions(ns: NS, numberOfDivisions: number): Promise<void> {
-  const divisions = ((await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<NS['corporation']['getCorporation']>)
-    .divisions;
   const restaurantIndustryData = (await Do(
     ns,
     'ns.corporation.getIndustryData',
@@ -2096,8 +2097,19 @@ export async function createDummyDivisions(ns: NS, numberOfDivisions: number): P
   )) as CorpIndustryData;
   for (let i = 0; i < numberOfDivisions; i++) {
     const dummyDivisionName = dummyDivisionNamePrefix + i.toString().padStart(2, '0');
+    const corpBefore = (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<
+      NS['corporation']['getCorporation']
+    >;
+    const divisions = corpBefore.divisions;
     if (divisions.includes(dummyDivisionName)) {
       continue;
+    }
+    if (divisions.length >= CORPORATION_DIVISION_CAP) {
+      ns.print(
+        `Division cap reached (${divisions.length}/${CORPORATION_DIVISION_CAP}); ` +
+          `skipping dummy division ${dummyDivisionName} and any further dummies.`,
+      );
+      return;
     }
     let cyclesWaited = 0;
     while (true) {
@@ -2115,7 +2127,32 @@ export async function createDummyDivisions(ns: NS, numberOfDivisions: number): P
       }
       await waitForNumberOfCycles(ns, 10);
     }
-    await Do(ns, 'ns.corporation.expandIndustry', IndustryType.RESTAURANT, dummyDivisionName);
+    const corpAfterWait = (await Do(ns, 'ns.corporation.getCorporation')) as ReturnType<
+      NS['corporation']['getCorporation']
+    >;
+    if (corpAfterWait.divisions.length >= CORPORATION_DIVISION_CAP) {
+      ns.print(
+        `Division cap reached while waiting for funds (${corpAfterWait.divisions.length}/${CORPORATION_DIVISION_CAP}); ` +
+          `skipping dummy ${dummyDivisionName}.`,
+      );
+      return;
+    }
+    if (corpAfterWait.divisions.includes(dummyDivisionName)) {
+      continue;
+    }
+    try {
+      await Do(ns, 'ns.corporation.expandIndustry', IndustryType.RESTAURANT, dummyDivisionName);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/too many divisions/i.test(msg)) {
+        ns.print(
+          `Cannot expand into Restaurant (${dummyDivisionName}): at division cap. ` +
+            `Continuing without more dummy divisions.`,
+        );
+        return;
+      }
+      throw e;
+    }
     const division = (await Do(ns, 'ns.corporation.getDivision', dummyDivisionName)) as ReturnType<
       NS['corporation']['getDivision']
     >;
